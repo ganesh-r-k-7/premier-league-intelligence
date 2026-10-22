@@ -1,0 +1,43 @@
+[
+  {"id": "halfstart1", "index": 1, "period": 1, "timestamp": "00:00:00.000", "minute": 0, "type": {"id": 34, "name": "Half Start"}, "team": {"id": 100, "name": "Blue FC"}},
+  {"id": "sxi_blue", "index": 2, "period": 1, "timestamp": "00:00:00.000", "minute": 0, "type": {"id": 35, "name": "Starting XI"}, "team": {"id": 100, "name": "Blue FC"}, "tactics": {"formation": 4, "lineup": [
+    {"player": {"id": 1, "name": "Blue Keeper"}, "position": {"id": 1, "name": "Goalkeeper"}, "jersey_number": 1},
+    {"player": {"id": 2, "name": "Blue Def Two"}, "position": {"id": 5, "name": "Left Back"}, "jersey_number": 2},
+    {"player": {"id": 3, "name": "Blue Def Three"}, "position": {"id": 3, "name": "Right Center Back"}, "jersey_number": 3},
+    {"player": {"id": 4, "name": "Blue Def Four"}, "position": {"id": 3, "name": "Right Center Back"}, "jersey_number": 4},
+    {"player": {"id": 5, "name": "Blue Def Five"}, "position": {"id": 2, "name": "Right Back"}, "jersey_number": 5},
+    {"player": {"id": 6, "name": "Blue Mid Six"}, "position": {"id": 6, "name": "Left Defensive Midfield"}, "jersey_number": 6},
+    {"player": {"id": 7, "name": "Blue Playmaker"}, "position": {"id": 15, "name": "Center Attacking Midfield"}, "jersey_number": 7},
+    {"player": {"id": 8, "name": "Blue Mid Eight"}, "position": {"id": 8, "name": "Left Center Midfield"}, "jersey_number": 8},
+    {"player": {"id": 9, "name": "Blue Striker"}, "position": {"id": 23, "name": "Center Forward"}, "jersey_number": 9},
+    {"player": {"id": 10, "name": "Blue Winger"}, "position": {"id": 14, "name": "Right Wing"}, "jersey_number": 10},
+    {"player": {"id": 11, "name": "Blue Winger Left"}, "position": {"id": 12, "name": "Left Wing"}, "jersey_number": 11}
+  ]}},
+  {"id": "sxi_red", "index": 3, "period": 1, "timestamp": "00:00:00.000", "minute": 0, "type": {"id": 35, "name": "Starting XI"}, "team": {"id": 200, "name": "Red FC"}, "tactics": {"formation": 4, "lineup": [
+    {"player": {"id": 21, "name": "Red Keeper"}, "position": {"id": 1, "name": "Goalkeeper"}, "jersey_number": 1},
+    {"player": {"id": 22, "name": "Red Def Two"}, "position": {"id": 5, "name": "Left Back"}, "jersey_number": 2},
+    {"player": {"id": 23, "name": "Red Def Three"}, "position": {"id": 3, "name": "Right Center Back"}, "jersey_number": 3},
+    {"player": {"id": 24, "name": "Red Def Four"}, "position": {"id": 3, "name": "Right Center Back"}, "jersey_number": 4},
+    {"player": {"id": 25, "name": "Red Def Five"}, "position": {"id": 3, "name": "Left Center Back"}, "jersey_number": 5},
+    {"player": {"id": 26, "name": "Red Mid Six"}, "position": {"id": 8, "name": "Left Center Midfield"}, "jersey_number": 6},
+    {"player": {"id": 27, "name": "Red Back"}, "position": {"id": 2, "name": "Right Back"}, "jersey_number": 7},
+    {"player": {"id": 28, "name": "Red Mid Eight"}, "position": {"id": 8, "name": "Left Center Midfield"}, "jersey_number": 8},
+    {"player": {"id": 29, "name": "Red Forward"}, "position": {"id": 23, "name": "Center Forward"}, "jersey_number": 9},
+    {"player": {"id": 30, "name": "Red Winger"}, "position": {"id": 14, "name": "Right Wing"}, "jersey_number": 10},
+    {"player": {"id": 31, "name": "Red Winger Left"}, "position": {"id": 12, "name": "Left Wing"}, "jersey_number": 11}
+  ]}},
+  {"id": "P1", "index": 4, "period": 1, "timestamp": "00:05:00.000", "minute": 10, "type": {"id": 30, "name": "Pass"}, "team": {"id": 100, "name": "Blue FC"}, "player": {"id": 7, "name": "Blue Playmaker"}, "position": {"id": 15, "name": "Center Attacking Midfield"}, "pass": {"recipient": {"id": 9, "name": "Blue Striker"}, "goal_assist": true, "assisted_shot_id": "S1"}},
+  {"id": "S1", "index": 5, "period": 1, "timestamp": "00:05:01.000", "minute": 10, "type": {"id": 16, "name": "Shot"}, "team": {"id": 100, "name": "Blue FC"}, "player": {"id": 9, "name": "Blue Striker"}, "position": {"id": 23, "name": "Center Forward"}, "shot": {"statsbomb_xg": 0.4, "key_pass_id": "P1", "type": {"id": 87, "name": "Open Play"}, "outcome": {"id": 97, "name": "Goal"}}},
+  {"id": "P1", "index": 6, "period": 1, "timestamp": "00:05:00.000", "minute": 10, "type": {"id": 30, "name": "Pass"}, "team": {"id": 100, "name": "Blue FC"}, "player": {"id": 7, "name": "Blue Playmaker"}, "position": {"id": 15, "name": "Center Attacking Midfield"}, "pass": {"recipient": {"id": 9, "name": "Blue Striker"}, "goal_assist": true, "assisted_shot_id": "S1"}},
+  {"id": "S2", "index": 7, "period": 1, "timestamp": "00:15:00.000", "minute": 20, "type": {"id": 16, "name": "Shot"}, "team": {"id": 100, "name": "Blue FC"}, "player": {"id": 10, "name": "Blue Winger"}, "position": {"id": 14, "name": "Right Wing"}, "shot": {"statsbomb_xg": 0.1, "type": {"id": 87, "name": "Open Play"}, "outcome": {"id": 100, "name": "Saved"}}},
+  {"id": "S3", "index": 8, "period": 1, "timestamp": "00:25:00.000", "minute": 30, "type": {"id": 16, "name": "Shot"}, "team": {"id": 100, "name": "Blue FC"}, "player": {"id": 9, "name": "Blue Striker"}, "position": {"id": 23, "name": "Center Forward"}, "shot": {"statsbomb_xg": 0.76, "type": {"id": 88, "name": "Penalty"}, "outcome": {"id": 97, "name": "Goal"}}},
+  {"id": "oga1", "index": 9, "period": 1, "timestamp": "00:35:00.000", "minute": 40, "type": {"id": 20, "name": "Own Goal Against"}, "team": {"id": 200, "name": "Red FC"}, "player": {"id": 25, "name": "Red Def Five"}},
+  {"id": "ogf1", "index": 10, "period": 1, "timestamp": "00:35:00.000", "minute": 40, "type": {"id": 25, "name": "Own Goal For"}, "team": {"id": 100, "name": "Blue FC"}, "player": null},
+  {"id": "halfend1", "index": 11, "period": 1, "timestamp": "00:45:00.000", "minute": 45, "type": {"id": 33, "name": "Half End"}, "team": {"id": 100, "name": "Blue FC"}},
+  {"id": "ghostshot", "index": 12, "period": 2, "timestamp": "00:05:00.000", "minute": 50, "type": {"id": 16, "name": "Shot"}, "team": {"id": 100, "name": "Blue FC"}, "player": {"id": 99, "name": "Ghost Player"}, "position": {"id": 23, "name": "Center Forward"}, "shot": {"statsbomb_xg": 0.05, "type": {"id": 87, "name": "Open Play"}, "outcome": {"id": 98, "name": "Off T"}}},
+  {"id": "balldrop", "index": 13, "period": 2, "timestamp": "00:10:00.000", "minute": 55, "type": {"id": 39, "name": "Referee Ball-Drop"}, "team": {"id": 200, "name": "Red FC"}},
+  {"id": "sub1", "index": 14, "period": 2, "timestamp": "00:15:00.000", "minute": 60, "type": {"id": 19, "name": "Substitution"}, "team": {"id": 200, "name": "Red FC"}, "player": {"id": 26, "name": "Red Mid Six"}, "position": {"id": 8, "name": "Left Center Midfield"}, "substitution": {"replacement": {"id": 32, "name": "Red Sub"}, "outcome": {"id": 103, "name": "Tactical"}}},
+  {"id": "sub2", "index": 15, "period": 2, "timestamp": "00:25:00.000", "minute": 70, "type": {"id": 19, "name": "Substitution"}, "team": {"id": 100, "name": "Blue FC"}, "player": {"id": 8, "name": "Blue Mid Eight"}, "position": {"id": 8, "name": "Left Center Midfield"}, "substitution": {"replacement": {"id": 12, "name": "Blue Sub"}, "outcome": {"id": 103, "name": "Tactical"}}},
+  {"id": "foul1", "index": 16, "period": 2, "timestamp": "00:35:00.000", "minute": 80, "type": {"id": 22, "name": "Foul Committed"}, "team": {"id": 200, "name": "Red FC"}, "player": {"id": 27, "name": "Red Back"}, "position": {"id": 2, "name": "Right Back"}, "foul_committed": {"card": {"id": 5, "name": "Red Card"}}},
+  {"id": "halfend2", "index": 17, "period": 2, "timestamp": "00:45:00.000", "minute": 90, "type": {"id": 33, "name": "Half End"}, "team": {"id": 100, "name": "Blue FC"}}
+]

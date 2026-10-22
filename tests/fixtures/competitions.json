@@ -1,0 +1,23 @@
+[
+  {
+    "competition_id": 2,
+    "season_id": 99,
+    "competition_name": "Premier League",
+    "season_name": "2018/2019",
+    "match_available": "2020-01-01T00:00:00"
+  },
+  {
+    "competition_id": 2,
+    "season_id": 100,
+    "competition_name": "Premier League",
+    "season_name": "2019/2020",
+    "match_available": null
+  },
+  {
+    "competition_id": 11,
+    "season_id": 42,
+    "competition_name": "La Liga",
+    "season_name": "2018/2019",
+    "match_available": "2020-01-01T00:00:00"
+  }
+]
