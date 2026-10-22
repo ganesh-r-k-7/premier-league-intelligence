@@ -330,3 +330,36 @@ Phase 3 Stage 3.2 (regularized Poisson GLM) is complete and verified:
 
 - **Outputs:** `reports/phase3_stage32_report.md`, `reports/phase3_stage32_glm_predictions.parquet`
 - **Test suite:** 156 tests pass (22 new GLM tests + 134 existing)
+
+## Phase 3 Stage 3.3 status — complete
+
+Phase 3 Stage 3.3 (Negative Binomial GLM) is complete and verified:
+
+- **Implemented:** `src/models/glm.py` extended with Negative Binomial GLM:
+  - Separate models for goals and assists using statsmodels NegativeBinomial
+  - L2 regularization (alpha=1.0) with BFGS solver
+  - StandardScaler fitted on training data only; constant features dropped
+  - Fallback to zero predictions when training samples < min_train_samples (20)
+  - Training and prediction deterministic (random_state=42)
+  - Dispersion diagnostic (Pearson and Deviance) for overdispersion detection
+  - Chronological cross-validation for regularization tuning
+- **Leakage prevention:** All features from `match_week < cutoff`; 4 leakage tests pass
+- **Test suite:** 171 tests pass (15 new NB tests + 156 existing)
+- **Dispersion diagnostics:** Pearson dispersion ≈ 0.95 (goals), 0.67 (assists) — data is near equidispersed, not overdispersed
+- **Fair evaluation:** Rolling-origin on cutoffs 2–10 (2,480 predictions) on identical observations for all models
+
+**Comparison with baselines (Population A, cutoffs 2-10, 2,480 predictions):**
+
+| Model | MAE Goals | RMSE Goals | Poisson Dev Goals | MAE Assists | RMSE Assists | Poisson Dev Assists |
+|-------|-----------|------------|-------------------|-------------|--------------|---------------------|
+| **Recent Form** | **0.1563** | 0.3825 | **0.1104** | **0.1155** | 0.3045 | **0.0617** |
+| **Player Mean** | 0.1622 | 0.3595 | 0.2777 | 0.1205 | 0.2849 | 0.1656 |
+| **Poisson GLM** | 0.1728 | 0.3515 | 0.4812 | 0.1240 | 0.2762 | 0.3788 |
+| **NegBin GLM** | 0.1891 | 0.4372 | 0.4894 | 0.1209 | 0.2785 | 0.3935 |
+| Global Mean | 0.1724 | 0.3532 | 0.4931 | 0.1239 | 0.2767 | 0.3827 |
+| Minutes-Adjusted | 0.1918 | 0.4008 | 0.3014 | 0.1405 | 0.3138 | 0.1713 |
+
+**Key finding:** Negative Binomial GLM does NOT improve on Poisson GLM or simple baselines. Data shows no meaningful overdispersion (Pearson dispersion ≈ 0.95 goals, 0.67 assists). The best model remains the simple Recent Form baseline. Negative Binomial adds complexity without benefit.
+
+- **Outputs:** `reports/phase3_stage33_report.md`, `reports/phase3_stage33_nb_predictions.parquet`
+- **Test suite:** 171 tests pass (15 new NB tests + 156 existing)

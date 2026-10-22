@@ -1,4 +1,4 @@
-"""Tests for regularized Poisson GLM model."""
+"""Tests for regularized Poisson and Negative Binomial GLM models."""
 
 from __future__ import annotations
 
@@ -10,11 +10,18 @@ from sklearn.preprocessing import StandardScaler
 from src.models.glm import (
     FEATURE_COLUMNS,
     GLMConfig,
+    NBConfig,
     PlayerGLM,
+    PlayerNB,
     _fit_glm,
+    _fit_nb,
     _predict_glm,
+    _predict_nb,
     _prepare_feature_matrix,
+    compute_dispersion_diagnostic,
     train_glm_at_cutoff,
+    train_nb_at_cutoff,
+    STATSMODELS_AVAILABLE,
 )
 from src.features import FeatureConfig
 
@@ -527,6 +534,238 @@ class TestIntegration:
         assert not preds.empty
         assert np.all(preds["glm_goals_pred"] == 0)
         assert np.all(preds["glm_assists_pred"] == 0)
+
+
+@pytest.mark.skipif(not STATSMODELS_AVAILABLE, reason="statsmodels not available")
+class TestPlayerNB:
+    """Tests for PlayerNB (Negative Binomial) class."""
+
+    def test_fit_and_predict(self):
+        """End-to-end fit and predict for NB."""
+        df = _make_synthetic_data(200)
+        config = NBConfig(alpha=1.0, min_train_samples=50)
+
+        nb = PlayerNB(config)
+        nb.fit(df)
+
+        preds_goals, preds_assists = nb.predict(df.iloc[:50])
+
+        assert len(preds_goals) == 50
+        assert len(preds_assists) == 50
+        assert np.all(preds_goals >= 0)
+        assert np.all(preds_assists >= 0)
+        assert not nb.get_fallback_status()
+
+    def test_insufficient_training_data_fallback(self):
+        """Fallback used when training data insufficient."""
+        df = _make_synthetic_data(10)
+        config = NBConfig(alpha=1.0, min_train_samples=50)
+
+        nb = PlayerNB(config)
+        nb.fit(df)
+
+        preds_goals, preds_assists = nb.predict(df)
+
+        assert np.all(preds_goals == 0)
+        assert np.all(preds_assists == 0)
+        assert nb.get_fallback_status()
+
+    def test_sparse_history_fallback(self):
+        """Fallback when data has mostly zeros."""
+        df = _make_synthetic_data(50)
+        df["goals_actual"] = 0
+        df["assists_actual"] = 0
+
+        config = NBConfig(alpha=1.0, min_train_samples=30)
+        nb = PlayerNB(config)
+        nb.fit(df)
+
+        preds_goals, preds_assists = nb.predict(df)
+
+        assert np.all(preds_goals >= 0)
+        assert np.all(preds_assists >= 0)
+
+    def test_deterministic_behavior(self):
+        """Model behavior is deterministic with fixed random_state."""
+        df = _make_synthetic_data(100)
+
+        config1 = NBConfig(alpha=1.0, random_state=42)
+        config2 = NBConfig(alpha=1.0, random_state=42)
+
+        nb1 = PlayerNB(config1)
+        nb1.fit(df)
+
+        nb2 = PlayerNB(config2)
+        nb2.fit(df)
+
+        preds1_g, preds1_a = nb1.predict(df)
+        preds2_g, preds2_a = nb2.predict(df)
+
+        assert np.allclose(preds1_g, preds2_g)
+        assert np.allclose(preds1_a, preds2_a)
+
+    def test_missing_features_handled(self):
+        """Missing features in test data are handled."""
+        df = _make_synthetic_data(100)
+        test_df = df.iloc[:20].copy()
+        test_df.loc[0, "player_goals_per_90"] = np.nan
+        test_df.loc[1, "player_assists_per_90"] = np.nan
+
+        config = NBConfig(alpha=1.0)
+        nb = PlayerNB(config)
+        nb.fit(df)
+
+        preds_goals, preds_assists = nb.predict(test_df)
+
+        assert len(preds_goals) == 20
+        assert np.all(preds_goals >= 0)
+
+    def test_get_dispersion(self):
+        """Dispersion parameters are returned."""
+        df = _make_synthetic_data(200)
+        config = NBConfig(alpha=1.0, min_train_samples=50)
+
+        nb = PlayerNB(config)
+        nb.fit(df)
+
+        disp_g, disp_a = nb.get_dispersion()
+        assert isinstance(disp_g, float)
+        assert isinstance(disp_a, float)
+        assert disp_g >= 0
+        assert disp_a >= 0
+
+
+@pytest.mark.skipif(not STATSMODELS_AVAILABLE, reason="statsmodels not available")
+class TestNBIntegration:
+    """Integration tests for Negative Binomial with feature pipeline."""
+
+    def test_train_nb_at_cutoff_cutoff_2(self):
+        """Train NB at cutoff 2 with matchweek 1 history."""
+        pm, fx = _make_test_data_with_matchweek()
+
+        feature_config = FeatureConfig(min_history=3, recent_window=3)
+        nb_config = NBConfig(alpha=1.0, min_train_samples=5)
+
+        preds, fallback = train_nb_at_cutoff(pm, fx, 2, feature_config, nb_config)
+
+        assert not preds.empty
+        assert len(preds) == 6
+        assert "nb_goals_pred" in preds.columns
+        assert "nb_assists_pred" in preds.columns
+        assert np.all(preds["nb_goals_pred"] >= 0)
+        assert np.all(preds["nb_assists_pred"] >= 0)
+
+    def test_train_nb_at_cutoff_cutoff_1_fallback(self):
+        """Cutoff 1 uses fallback (no history)."""
+        pm, fx = _make_test_data_with_matchweek()
+
+        feature_config = FeatureConfig(min_history=3, recent_window=3)
+        nb_config = NBConfig(alpha=1.0, min_train_samples=5)
+
+        preds, fallback = train_nb_at_cutoff(pm, fx, 1, feature_config, nb_config)
+
+        assert fallback
+        assert not preds.empty
+        assert np.all(preds["nb_goals_pred"] == 0)
+        assert np.all(preds["nb_assists_pred"] == 0)
+
+
+class TestDispersionDiagnostic:
+    """Tests for dispersion diagnostic function."""
+
+    def test_dispersion_poisson_equidispersed(self):
+        """Test dispersion diagnostic on Poisson-distributed data."""
+        np.random.seed(42)
+        y_true = np.random.poisson(1.0, 1000)
+        y_pred = np.full(1000, 1.0)
+        
+        disp = compute_dispersion_diagnostic(y_true, y_pred, method="pearson")
+        assert disp is not None
+        # Should be close to 1.0 for equidispersed data
+        assert 0.5 < disp < 2.0
+
+    def test_dispersion_overdispersed(self):
+        """Test dispersion diagnostic on overdispersed data (Negative Binomial)."""
+        np.random.seed(42)
+        # Generate overdispersed data using Negative Binomial
+        y_true = np.random.negative_binomial(n=2, p=0.5, size=1000)
+        y_pred = np.full(1000, np.mean(y_true))
+        
+        disp = compute_dispersion_diagnostic(y_true, y_pred, method="pearson")
+        assert disp is not None
+        # Should be > 1 for overdispersed data
+        assert disp > 1.5
+
+    def test_dispersion_constant_predictions(self):
+        """Test dispersion with constant predictions."""
+        y_true = np.array([0, 1, 2, 0, 1, 2, 0, 1, 2])
+        y_pred = np.full(9, 1.0)
+        
+        disp = compute_dispersion_diagnostic(y_true, y_pred, method="pearson")
+        assert disp is not None
+        assert disp >= 0
+
+    def test_dispersion_deviance_method(self):
+        """Test deviance-based dispersion method."""
+        np.random.seed(42)
+        y_true = np.random.poisson(1.0, 1000)
+        y_pred = np.full(1000, 1.0)
+        
+        disp = compute_dispersion_diagnostic(y_true, y_pred, method="deviance")
+        assert disp is not None
+        assert 0.5 < disp < 2.0
+
+    def test_dispersion_invalid_input(self):
+        """Test handling of invalid inputs."""
+        y_true = np.array([0, 1, 2])
+        y_pred = np.array([1.0])
+        
+        with pytest.raises(ValueError):
+            compute_dispersion_diagnostic(y_true, y_pred)
+
+
+class TestRegularizationTuning:
+    """Tests for chronological regularization tuning."""
+
+    @pytest.mark.skipif(not STATSMODELS_AVAILABLE, reason="statsmodels not available")
+    def test_tune_regularization_poisson(self):
+        """Test Poisson regularization tuning."""
+        from src.models.glm import tune_regularization_chronological
+        from src.models.glm import GLMConfig
+        
+        df = _make_synthetic_data(200)
+        df["match_week"] = np.repeat(np.arange(1, 11), 20)  # 10 matchweeks
+        
+        best_alpha, cv_scores = tune_regularization_chronological(
+            df, FEATURE_COLUMNS, "goals_actual", 
+            model_type="poisson", 
+            alpha_grid=[0.1, 1.0, 10.0],
+            n_folds=3,
+            config=GLMConfig()
+        )
+        
+        assert best_alpha in [0.1, 1.0, 10.0]
+        assert isinstance(cv_scores, dict)
+
+    @pytest.mark.skipif(not STATSMODELS_AVAILABLE, reason="statsmodels not available")
+    def test_tune_regularization_negbin(self):
+        """Test Negative Binomial regularization tuning."""
+        from src.models.glm import tune_regularization_chronological
+        from src.models.glm import NBConfig
+        
+        df = _make_synthetic_data(200)
+        df["match_week"] = np.repeat(np.arange(1, 11), 20)
+        
+        best_alpha, cv_scores = tune_regularization_chronological(
+            df, FEATURE_COLUMNS, "goals_actual",
+            model_type="negbin",
+            alpha_grid=[0.1, 1.0, 10.0],
+            n_folds=3,
+            config=NBConfig()
+        )
+        
+        assert best_alpha in [0.1, 1.0, 10.0]
+        assert isinstance(cv_scores, dict)
 
 
 if __name__ == "__main__":

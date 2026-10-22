@@ -28,6 +28,7 @@ data/interim/
 
 # Serialized model artifacts are regenerated deterministically.
 models/
+!src/models/
 
 # Generated report figures (the Markdown report itself is tracked).
 reports/figures/
