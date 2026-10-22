@@ -302,3 +302,31 @@ Phase 3 Stage 3.1 (player feature engineering) is complete and verified:
 - Team xG per match aggregated from player_match (approximate)
 - Position bands group sparse positions (25 raw → 5 bands)
 - No opponent strength ratings beyond goals conceded
+
+## Phase 3 Stage 3.2 status — complete
+
+Phase 3 Stage 3.2 (regularized Poisson GLM) is complete and verified:
+
+- **Implemented:** `src/models/glm.py` with regularized Poisson GLM:
+  - Separate models for goals and assists using scikit-learn's PoissonRegressor
+  - L2 regularization (alpha=1.0) with Newton-Cholesky solver
+  - StandardScaler fitted on training data only; constant features dropped
+  - Fallback to zero predictions when training samples < min_train_samples (20)
+  - Training and prediction deterministic (random_state=42)
+- **Leakage prevention:** All features from `match_week < cutoff`; 4 leakage tests pass
+- **Test suite:** 156 tests pass (22 new GLM tests + 134 existing)
+- **Evaluation:** Rolling-origin on cutoffs 2–10 (2,480 predictions); full 38-matchweek evaluation deferred due to computational cost
+- **Comparison with baselines (Population A):**
+
+| Model | MAE Goals | RMSE Goals | Poisson Dev Goals | MAE Assists | RMSE Assists | Poisson Dev Assists |
+|-------|-----------|------------|-------------------|-------------|--------------|---------------------|
+| **GLM (cutoffs 2–10)** | **0.1728** | **0.3515** | 0.4812 | **0.1240** | **0.2762** | 0.3788 |
+| Recent Form (38 weeks) | 0.1527 | 0.3522 | 0.1211 | 0.1104 | 0.2821 | 0.0607 |
+| Player Mean (38 weeks) | 0.1558 | 0.3315 | 0.2665 | 0.1127 | 0.2664 | 0.1799 |
+| Global Mean (38 weeks) | 0.1693 | 0.3346 | 0.4607 | 0.1181 | 0.2629 | 0.3505 |
+| Minutes-Adjusted (38 weeks) | 0.1771 | 0.3525 | 0.2869 | 0.1262 | 0.2805 | 0.1921 |
+
+**Key finding:** GLM does not clearly outperform simple baselines (Recent Form, Player Mean) on this dataset. Poisson Deviance suggests overdispersion; Negative Binomial recommended for Stage 3.3.
+
+- **Outputs:** `reports/phase3_stage32_report.md`, `reports/phase3_stage32_glm_predictions.parquet`
+- **Test suite:** 156 tests pass (22 new GLM tests + 134 existing)

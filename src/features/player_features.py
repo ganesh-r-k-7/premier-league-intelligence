@@ -386,6 +386,7 @@ def compute_features_for_cutoff(
             target_row["match_date"] = pd.NaT
         feats = compute_player_features(player_match, fixtures, target_row, row["player_id"], config)
         feats["player_id"] = row["player_id"]
+        feats["player_name"] = row["player_name"]
         feats["match_id"] = row["match_id"]
         feats["match_week"] = cutoff_week
         feats["team_id"] = row["team_id"]
