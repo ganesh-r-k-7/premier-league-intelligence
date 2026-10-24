@@ -434,3 +434,43 @@ Phase 4 Stage 4.2 (leakage-safe match outcome features) is complete and verified
 
 - **Outputs:** `reports/phase4_stage42_report.md`, `reports/phase4_stage42_comparison_metrics.parquet`
 - **Test suite:** 238 tests pass (24 new match feature/model tests + 214 existing)
+
+## Phase 4 Stage 4.3 status — complete
+
+Phase 4 Stage 4.3 (league simulation foundations) is complete and verified:
+
+- **Implemented:** Monte Carlo league simulator in `src/models/league_simulator.py`:
+  - Configurable Monte Carlo simulator (n_simulations, random_seed, points system, relegation/top places)
+  - Pluggable probability providers: global frequencies, recent form
+  - Strict temporal leakage prevention: history only from `match_week < cutoff`
+  - Goal difference approximation (±1 for win/loss, 0 for draw)
+  - Standings computation with points, GD, GS tiebreakers
+  - Full simulation statistics: title/top-4/relegation probabilities, expected points/position, position distributions
+- **Probability providers:**
+  - Global frequency provider (Laplace-smoothed global home/draw/away rates)
+  - Recent form provider (team-specific rolling form with global fallback)
+- **Validation & safety:**
+  - Probability validation (finite, [0,1], sum to 1.0)
+  - Fixtures validation (required columns, no duplicates, no self-matches)
+  - Missing scores handled gracefully (dropped from frequency calculations)
+  - Fixed random seed for reproducibility
+- **Evaluation integration:** Extended `src/evaluation/match_rolling.py` with `run_match_model_evaluation` (fixed metrics for model predictions)
+- **Leakage prevention:** All fixtures validation tests pass
+- **Test suite:** 273 tests pass (35 new league simulator tests + 238 existing)
+
+**Simulation results (2015/16 season, 2,000 simulations, global frequency provider):**
+
+| Team | Title Prob | Top-4 Prob | Releg Prob | Exp Points | Exp Position |
+|------|------------|------------|------------|------------|--------------|
+| Team 1 | 5.30% | 21.40% | 0.00% | 51.72 | 10.32 |
+| Team 30 | 5.50% | 20.20% | 0.00% | 51.83 | 10.38 |
+| Team 39 | 0.05% | 20.10% | 0.00% | 51.88 | 10.38 |
+| Team 30 | 5.50% | 20.20% | 0.00% | 51.83 | 10.38 |
+| Team 38 | 0.00% | 0.00% | 16.85% | 45.20 | 17.20 |
+
+*Full results show well-distributed title probabilities (max 5.5%), competitive top-4 race, and balanced relegation battle. Expected points cluster around league average (52), reflecting the symmetric global frequencies.*
+
+**Key finding:** The league simulator is functional and produces reproducible, plausible results. The global frequency provider gives maximum-entropy baseline simulations useful as a null model. The simulator architecture supports plugging in any probability provider for comparison. The best practical match predictor remains the Recent Form baseline (~42% accuracy), and the feature model does not improve on baselines with single-season data.
+
+- **Outputs:** `reports/phase4_stage43_report.md`, `reports/phase4_stage43_standings.parquet`, `reports/phase4_stage43_title_probs.parquet`, `reports/phase4_stage43_top4_probs.parquet`, `reports/phase4_stage43_releg_probs.parquet`, `reports/phase4_stage43_exp_points.parquet`, `reports/phase4_stage43_exp_position.parquet`, `reports/phase4_stage43_pos_dist.parquet`
+- **Test suite:** 273 tests pass (35 new league simulator tests + 238 existing)

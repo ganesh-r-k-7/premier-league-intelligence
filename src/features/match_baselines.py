@@ -33,14 +33,17 @@ def compute_global_outcome_frequencies(
     Returns:
         Tuple of probabilities summing to 1.0.
     """
-    if history.empty:
+    # Filter out matches with missing scores
+    valid_history = history.dropna(subset=["home_score", "away_score"])
+    
+    if valid_history.empty:
         return (1.0 / 3, 1.0 / 3, 1.0 / 3)
 
-    home_wins = (history["home_score"] > history["away_score"]).sum()
-    draws = (history["home_score"] == history["away_score"]).sum()
-    away_wins = (history["home_score"] < history["away_score"]).sum()
+    home_wins = (valid_history["home_score"] > valid_history["away_score"]).sum()
+    draws = (valid_history["home_score"] == valid_history["away_score"]).sum()
+    away_wins = (valid_history["home_score"] < valid_history["away_score"]).sum()
 
-    total = len(history) + 3 * smoothing_alpha
+    total = len(valid_history) + 3 * smoothing_alpha
     home_win_prob = (home_wins + smoothing_alpha) / total
     draw_prob = (draws + smoothing_alpha) / total
     away_win_prob = (away_wins + smoothing_alpha) / total
@@ -129,14 +132,17 @@ def compute_recent_form_baseline(
     Returns:
         Tuple of (home_win_prob, draw_prob, away_win_prob).
     """
+    # Filter out matches with missing scores first
+    valid_history = history.dropna(subset=["home_score", "away_score"])
+    
     # Get recent matches for home team
-    home_matches = history[
-        (history["home_team_id"] == home_team_id) | (history["away_team_id"] == home_team_id)
+    home_matches = valid_history[
+        (valid_history["home_team_id"] == home_team_id) | (valid_history["away_team_id"] == home_team_id)
     ].sort_values("match_week", ascending=False).head(window)
 
     # Get recent matches for away team
-    away_matches = history[
-        (history["home_team_id"] == away_team_id) | (history["away_team_id"] == away_team_id)
+    away_matches = valid_history[
+        (valid_history["home_team_id"] == away_team_id) | (valid_history["away_team_id"] == away_team_id)
     ].sort_values("match_week", ascending=False).head(window)
 
     if len(home_matches) < 1 or len(away_matches) < 1:

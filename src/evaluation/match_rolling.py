@@ -99,8 +99,11 @@ def run_match_model_evaluation(
 
     # Compute metrics for model predictions
     preds = results.get("predictions", pd.DataFrame())
-    metrics_per_cutoff = compute_match_metrics_per_cutoff(preds) if not preds.empty else pd.DataFrame()
-    metrics_aggregate = compute_match_aggregate_metrics(preds) if not preds.empty else pd.DataFrame()
+    model_pred_cols = {
+        "feature_model": ("model_home_prob", "model_draw_prob", "model_away_prob"),
+    }
+    metrics_per_cutoff = compute_match_metrics_per_cutoff(preds, target_col="outcome", pred_cols_map=model_pred_cols) if not preds.empty else pd.DataFrame()
+    metrics_aggregate = compute_match_aggregate_metrics(preds, target_col="outcome", pred_cols_map=model_pred_cols) if not preds.empty else pd.DataFrame()
 
     return {
         "predictions": preds,
