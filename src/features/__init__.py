@@ -28,6 +28,17 @@ from src.features.baselines import (
     evaluate_baselines_at_cutoff,
 )
 
+from src.features.match_baselines import (
+    MatchBaselineConfig,
+    evaluate_match_baselines_at_cutoff,
+)
+
+from src.features.match_features import (
+    MatchFeatureConfig,
+    compute_match_features,
+    compute_match_features_for_cutoff,
+)
+
 __all__ = [
     # player_aggregation
     "aggregate_match_players",
@@ -51,4 +62,11 @@ __all__ = [
     "compute_recent_form",
     "estimate_expected_minutes",
     "evaluate_baselines_at_cutoff",
+    # match_baselines
+    "MatchBaselineConfig",
+    "evaluate_match_baselines_at_cutoff",
+    # match_features
+    "MatchFeatureConfig",
+    "compute_match_features",
+    "compute_match_features_for_cutoff",
 ]

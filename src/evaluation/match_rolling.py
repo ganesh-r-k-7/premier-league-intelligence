@@ -12,6 +12,8 @@ from typing import Literal
 import pandas as pd
 
 from src.features.match_baselines import MatchBaselineConfig, evaluate_match_baselines_at_cutoff
+from src.features.match_features import MatchFeatureConfig
+from src.models.match_model import MatchModelConfig
 from src.evaluation.metrics import (
     compute_match_aggregate_metrics,
     compute_match_metrics_per_cutoff,
@@ -68,22 +70,147 @@ def run_match_rolling_evaluation(
     }
 
 
+def run_match_model_evaluation(
+    fixtures: pd.DataFrame,
+    player_match: pd.DataFrame | None,
+    feature_config: MatchFeatureConfig,
+    model_config: MatchModelConfig,
+    cutoffs: list[int] | None = None,
+    season_id: int | None = None
+) -> dict[str, pd.DataFrame]:
+    """Run rolling-origin evaluation for match feature model.
+
+    Args:
+        fixtures: Full fixtures DataFrame.
+        player_match: Player match data for xG aggregation.
+        feature_config: MatchFeatureConfig.
+        model_config: MatchModelConfig.
+        cutoffs: List of cutoff matchweeks.
+        season_id: Season identifier.
+
+    Returns:
+        Dictionary with predictions and metrics.
+    """
+    from src.models.match_model import run_model_rolling_evaluation
+
+    results = run_model_rolling_evaluation(
+        fixtures, player_match, feature_config, model_config, cutoffs, season_id
+    )
+
+    # Compute metrics for model predictions
+    preds = results.get("predictions", pd.DataFrame())
+    metrics_per_cutoff = compute_match_metrics_per_cutoff(preds) if not preds.empty else pd.DataFrame()
+    metrics_aggregate = compute_match_aggregate_metrics(preds) if not preds.empty else pd.DataFrame()
+
+    return {
+        "predictions": preds,
+        "metrics_per_cutoff": metrics_per_cutoff,
+        "metrics_aggregate": metrics_aggregate,
+        "fallback_counts": results.get("fallback_counts", 0),
+    }
+
+
+def evaluate_all_match_models(
+    fixtures: pd.DataFrame,
+    player_match: pd.DataFrame | None,
+    baseline_config: MatchBaselineConfig,
+    feature_config: MatchFeatureConfig,
+    model_config: MatchModelConfig,
+    cutoffs: list[int] | None = None,
+    season_id: int | None = None
+) -> pd.DataFrame:
+    """Evaluate all match models (baselines + feature model) on identical observations.
+
+    Args:
+        fixtures: Full fixtures DataFrame.
+        player_match: Player match data for xG aggregation.
+        baseline_config: MatchBaselineConfig for baselines.
+        feature_config: MatchFeatureConfig for feature engineering.
+        model_config: MatchModelConfig for feature model.
+        cutoffs: List of cutoff matchweeks.
+        season_id: Season identifier.
+
+    Returns:
+        DataFrame with metrics for all models.
+    """
+    from src.features.match_baselines import evaluate_match_baselines_at_cutoff
+    from src.models.match_model import train_model_at_cutoff
+    from src.evaluation.metrics import compute_match_metrics_per_cutoff
+
+    if cutoffs is None:
+        cutoffs = list(range(1, 39))
+
+    all_baseline_preds = []
+    all_model_preds = []
+
+    for cw in cutoffs:
+        # Baseline predictions
+        base_preds = evaluate_match_baselines_at_cutoff(
+            fixtures, cw, baseline_config, season_id
+        )
+        if not base_preds.empty:
+            all_baseline_preds.append(base_preds)
+
+        # Feature model predictions
+        model_preds, _ = train_model_at_cutoff(
+            fixtures, player_match, cw, season_id, feature_config, model_config
+        )
+        if not model_preds.empty:
+            all_model_preds.append(model_preds)
+
+    if not all_baseline_preds or not all_model_preds:
+        return pd.DataFrame()
+
+    base_all = pd.concat(all_baseline_preds, ignore_index=True)
+    model_all = pd.concat(all_model_preds, ignore_index=True)
+
+    # Ensure same rows for comparison
+    # Merge on match_id
+    merged = base_all.merge(
+        model_all[["match_id", "model_home_prob", "model_draw_prob", "model_away_prob"]],
+        on="match_id",
+        how="inner"
+    )
+
+    if merged.empty:
+        return pd.DataFrame()
+
+    # Compute metrics including all models
+    pred_cols_map = {
+        "global_frequencies": ("global_home_prob", "global_draw_prob", "global_away_prob"),
+        "home_advantage": ("home_advantage_home_prob", "home_advantage_draw_prob", "home_advantage_away_prob"),
+        "team_strength": ("team_strength_home_prob", "team_strength_draw_prob", "team_strength_away_prob"),
+        "recent_form": ("recent_form_home_prob", "recent_form_draw_prob", "recent_form_away_prob"),
+        "feature_model": ("model_home_prob", "model_draw_prob", "model_away_prob"),
+    }
+
+    metrics = compute_match_metrics_per_cutoff(
+        merged,
+        target_col="outcome",
+        pred_cols_map=pred_cols_map
+    )
+
+    return metrics
+
+
 def save_match_evaluation_results(
     results: dict[str, pd.DataFrame],
-    output_dir: str = "reports"
+    output_dir: str = "reports",
+    prefix: str = "phase4_stage41"
 ) -> None:
     """Save match outcome evaluation results to parquet files.
 
     Args:
         results: Dictionary from run_match_rolling_evaluation.
         output_dir: Directory to save files.
+        prefix: Prefix for output files.
     """
     import os
     os.makedirs(output_dir, exist_ok=True)
 
     for key, df in results.items():
         if not df.empty:
-            path = os.path.join(output_dir, f"phase4_stage41_{key}.parquet")
+            path = os.path.join(output_dir, f"{prefix}_{key}.parquet")
             df.to_parquet(path, index=False)
             logger.info("Saved %s to %s (%d rows)", key, path, len(df))
 

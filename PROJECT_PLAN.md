@@ -398,3 +398,39 @@ Phase 4 Stage 4.1 (match outcome baseline evaluation) is complete and verified:
 
 - **Outputs:** `reports/phase4_stage41_report.md`, `reports/phase4_stage41_predictions.parquet`, `reports/phase4_stage41_metrics_per_cutoff.parquet`, `reports/phase4_stage41_metrics_aggregate.parquet`
 - **Test suite:** 214 tests pass (37 new match outcome tests + 177 existing)
+
+## Phase 4 Stage 4.2 status — complete
+
+Phase 4 Stage 4.2 (leakage-safe match outcome features) is complete and verified:
+
+- **Implemented:** Match feature engineering in `src/features/match_features.py`:
+  - Rolling team stats (goals, points, xG) over last 5 matches
+  - Home/away specific performance splits
+  - Head-to-head history (window of 5 meetings)
+  - Rest days since last match
+  - Global fallback averages for goals, xG, outcome rates
+  - All features computed strictly from `match_week < cutoff` history
+- **Model:** Regularized multinomial logistic regression in `src/models/match_model.py`:
+  - L2 regularization (C=1.0) with LBFGS solver
+  - StandardScaler fitted on training data only
+  - Balanced class weights for draw class
+  - Handles missing classes (2-class training) gracefully
+- **Evaluation:** Extended `src/evaluation/match_rolling.py` for feature model comparison
+- **Leakage prevention:** All 6 leakage tests pass — future data injection does not affect earlier-cutoff features/predictions
+- **Test suite:** 238 tests pass (24 new match feature/model tests + 214 existing)
+- **Evaluation:** Fair comparison on identical observations (cutoffs 10–20, 110 matches)
+
+**Aggregate results (cutoffs 10–20, 110 matches):**
+
+| Model | Log Loss | Brier Score | Accuracy |
+|-------|----------|-------------|----------|
+| **Recent Form** | **1.1033** | **0.6577** | **0.4182** |
+| Global Frequencies | 1.0893 | 0.6585 | 0.3727 |
+| Home Advantage | 1.0893 | 0.6585 | 0.3727 |
+| Team Strength | 1.1499 | 0.7142 | 0.3273 |
+| **Feature Model** | **1.5156** | **0.8142** | **0.3273** |
+
+**Key finding:** The feature-enhanced multinomial logistic regression does NOT improve on simple baselines. The model underperforms all baselines on all metrics due to: (1) insufficient training data (~140-280 matches for 50+ features), (2) no H2H history in single season, (3) constant features dropped (rest days, H2H, global draw rate), (4) feature collinearity and overfitting risk. The best practical predictor remains the Recent Form baseline (~42% accuracy).
+
+- **Outputs:** `reports/phase4_stage42_report.md`, `reports/phase4_stage42_comparison_metrics.parquet`
+- **Test suite:** 238 tests pass (24 new match feature/model tests + 214 existing)
