@@ -1,7 +1,8 @@
-"""Evaluation metrics for goals and assists forecasting.
+"""Evaluation metrics for goals/assists forecasting and match outcome prediction.
 
-Implements MAE, RMSE, and Poisson deviance with explicit handling of
-zero predictions and invalid inputs per the implementation contract.
+Implements MAE, RMSE, Poisson deviance, and classification metrics
+(log loss, Brier score, accuracy) with explicit handling of
+invalid inputs per the implementation contract.
 """
 
 from __future__ import annotations
@@ -204,6 +205,313 @@ def compute_aggregate_metrics(
             y_pred_a = group[a_pred_col].values
 
             metrics = compute_metrics(y_true_g, y_pred_g, y_true_a, y_pred_a)
+            metrics.update({
+                "population": population,
+                "baseline": baseline_name,
+            })
+            results.append(metrics)
+
+    return pd.DataFrame(results)
+
+
+# =============================================================================
+# Classification metrics for match outcome prediction
+# =============================================================================
+
+def multiclass_log_loss(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    eps: float = 1e-15,
+    warn_on_invalid: bool = True
+) -> float | None:
+    """Compute multiclass log loss (cross-entropy).
+
+    Args:
+        y_true: True class labels as integers (0, 1, 2 for away/draw/home).
+        y_pred: Predicted probabilities, shape (n_samples, 3) or (n_samples,)
+                If 1D, assumed to be probability of positive class (binary).
+        eps: Clipping threshold to avoid log(0).
+        warn_on_invalid: Whether to log warning when returning None.
+
+    Returns:
+        Log loss as float, or None if invalid inputs.
+    """
+    y_true = np.asarray(y_true, dtype=int)
+    y_pred = np.asarray(y_pred, dtype=float)
+
+    if len(y_true) != len(y_pred):
+        if warn_on_invalid:
+            logger.warning("Log loss: y_true and y_pred length mismatch")
+        return None
+
+    if len(y_true) == 0:
+        return None
+
+    # Handle both 1D (binary) and 2D (multiclass) predictions
+    if y_pred.ndim == 1:
+        # Binary case: y_pred is probability of class 1
+        y_pred = np.clip(y_pred, eps, 1 - eps)
+        # Convert to 2D for uniform handling
+        y_pred_2d = np.column_stack([1 - y_pred, y_pred])
+        # Convert y_true to one-hot
+        n_classes = 2
+    else:
+        # Multiclass case
+        if y_pred.shape[1] < 2:
+            if warn_on_invalid:
+                logger.warning("Log loss: y_pred must have at least 2 columns for multiclass")
+            return None
+        y_pred_2d = np.clip(y_pred, eps, 1 - eps)
+        # Renormalize rows to sum to 1
+        row_sums = y_pred_2d.sum(axis=1, keepdims=True)
+        if np.any(row_sums <= 0):
+            if warn_on_invalid:
+                logger.warning("Log loss: predicted probabilities sum to zero or negative")
+            return None
+        y_pred_2d = y_pred_2d / row_sums
+        n_classes = y_pred_2d.shape[1]
+
+    # Check for valid class labels
+    if np.any(y_true < 0) or np.any(y_true >= n_classes):
+        if warn_on_invalid:
+            logger.warning("Log loss: y_true contains invalid class labels")
+        return None
+
+    # Compute log loss: -1/n * sum(log(p_true))
+    # where p_true is the predicted probability of the true class
+    n_samples = len(y_true)
+    log_probs = np.log(y_pred_2d[np.arange(n_samples), y_true])
+
+    if not np.all(np.isfinite(log_probs)):
+        if warn_on_invalid:
+            logger.warning("Log loss: non-finite log probabilities")
+        return None
+
+    return float(-np.mean(log_probs))
+
+
+def multiclass_brier_score(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    warn_on_invalid: bool = True
+) -> float | None:
+    """Compute multiclass Brier score.
+
+    Brier score = mean(sum((y_pred - y_true_onehot)^2)) over classes.
+    For 3 classes: 1/n * sum((p_home - I[y=home])^2 + (p_draw - I[y=draw])^2 + (p_away - I[y=away])^2)
+
+    Args:
+        y_true: True class labels as integers (0, 1, 2).
+        y_pred: Predicted probabilities, shape (n_samples, 3).
+        warn_on_invalid: Whether to log warning when returning None.
+
+    Returns:
+        Brier score as float (lower is better, 0 is perfect), or None if invalid.
+    """
+    y_true = np.asarray(y_true, dtype=int)
+    y_pred = np.asarray(y_pred, dtype=float)
+
+    if len(y_true) != len(y_pred):
+        if warn_on_invalid:
+            logger.warning("Brier score: y_true and y_pred length mismatch")
+        return None
+
+    if len(y_true) == 0:
+        return None
+
+    if y_pred.ndim != 2 or y_pred.shape[1] < 2:
+        if warn_on_invalid:
+            logger.warning("Brier score: y_pred must be 2D with at least 2 columns")
+        return None
+
+    n_classes = y_pred.shape[1]
+
+    # Check for valid class labels
+    if np.any(y_true < 0) or np.any(y_true >= n_classes):
+        if warn_on_invalid:
+            logger.warning("Brier score: y_true contains invalid class labels")
+        return None
+
+    # Check for valid probabilities (non-negative, rows sum to ~1)
+    if np.any(y_pred < -1e-10):
+        if warn_on_invalid:
+            logger.warning("Brier score: negative predicted probabilities")
+        return None
+
+    row_sums = y_pred.sum(axis=1)
+    if not np.allclose(row_sums, 1.0, atol=1e-6):
+        if warn_on_invalid:
+            logger.warning("Brier score: predicted probabilities do not sum to 1")
+        return None
+
+    if np.any(~np.isfinite(y_pred)):
+        if warn_on_invalid:
+            logger.warning("Brier score: non-finite predicted probabilities")
+        return None
+
+    # Create one-hot encoding of true labels
+    n_samples = len(y_true)
+    y_true_oh = np.zeros((n_samples, n_classes))
+    y_true_oh[np.arange(n_samples), y_true] = 1.0
+
+    # Brier score: mean squared error between predicted probs and one-hot targets
+    squared_errors = (y_pred - y_true_oh) ** 2
+    brier = float(np.mean(np.sum(squared_errors, axis=1)))
+
+    return brier
+
+
+def accuracy_score(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    warn_on_invalid: bool = True
+) -> float | None:
+    """Compute accuracy (fraction of correct predictions).
+
+    Args:
+        y_true: True class labels as integers.
+        y_pred: Predicted class labels as integers, OR probability matrix (n_samples, n_classes).
+        warn_on_invalid: Whether to log warning when returning None.
+
+    Returns:
+        Accuracy as float in [0, 1], or None if invalid.
+    """
+    y_true = np.asarray(y_true, dtype=int)
+    y_pred = np.asarray(y_pred)
+
+    if len(y_true) != len(y_pred):
+        if warn_on_invalid:
+            logger.warning("Accuracy: y_true and y_pred length mismatch")
+        return None
+
+    if len(y_true) == 0:
+        return None
+
+    # If y_pred is probability matrix, take argmax
+    if y_pred.ndim == 2:
+        y_pred_classes = np.argmax(y_pred, axis=1)
+    else:
+        y_pred_classes = np.asarray(y_pred, dtype=int)
+
+    if np.any(y_pred_classes < 0):
+        if warn_on_invalid:
+            logger.warning("Accuracy: negative predicted classes")
+        return None
+
+    return float(np.mean(y_true == y_pred_classes))
+
+
+def compute_match_metrics(
+    y_true: np.ndarray,
+    y_pred_probs: np.ndarray
+) -> dict[str, float | None]:
+    """Compute all match outcome metrics.
+
+    Args:
+        y_true: True outcomes (0=away, 1=draw, 2=home).
+        y_pred_probs: Predicted probabilities, shape (n_samples, 3) for [away, draw, home].
+
+    Returns:
+        Dictionary with log_loss, brier_score, accuracy, sample_size.
+    """
+    # Ensure probability columns are in correct order [away, draw, home]
+    # Our baselines output (home, draw, away) so we need to reorder
+    if y_pred_probs.shape[1] == 3:
+        # Reorder from [home, draw, away] to [away, draw, home] for metrics
+        y_pred_reordered = y_pred_probs[:, [2, 1, 0]]
+    else:
+        y_pred_reordered = y_pred_probs
+
+    return {
+        "log_loss": multiclass_log_loss(y_true, y_pred_reordered),
+        "brier_score": multiclass_brier_score(y_true, y_pred_reordered),
+        "accuracy": accuracy_score(y_true, y_pred_reordered),
+        "sample_size": len(y_true),
+    }
+
+
+def compute_match_metrics_per_cutoff(
+    predictions: pd.DataFrame,
+    target_col: str = "outcome",
+    pred_cols_map: dict[str, tuple[str, str, str]] | None = None
+) -> pd.DataFrame:
+    """Compute match outcome metrics per cutoff week and baseline.
+
+    Args:
+        predictions: DataFrame from evaluate_match_baselines_at_cutoff concatenated across cutoffs.
+        target_col: Column name for true outcome (0=away, 1=draw, 2=home).
+        pred_cols_map: Mapping from baseline name to (home_prob_col, draw_prob_col, away_prob_col).
+
+    Returns:
+        DataFrame with metrics per cutoff_week, population, and baseline.
+    """
+    if pred_cols_map is None:
+        pred_cols_map = {
+            "global_frequencies": ("global_home_prob", "global_draw_prob", "global_away_prob"),
+            "home_advantage": ("home_advantage_home_prob", "home_advantage_draw_prob", "home_advantage_away_prob"),
+            "team_strength": ("team_strength_home_prob", "team_strength_draw_prob", "team_strength_away_prob"),
+            "recent_form": ("recent_form_home_prob", "recent_form_draw_prob", "recent_form_away_prob"),
+        }
+
+    results = []
+
+    for (cutoff_week, population), group in predictions.groupby(["cutoff_week", "population"]):
+        y_true = group[target_col].values
+
+        for baseline_name, (home_col, draw_col, away_col) in pred_cols_map.items():
+            y_pred = np.column_stack([
+                group[home_col].values,
+                group[draw_col].values,
+                group[away_col].values,
+            ])
+
+            metrics = compute_match_metrics(y_true, y_pred)
+            metrics.update({
+                "cutoff_week": cutoff_week,
+                "population": population,
+                "baseline": baseline_name,
+            })
+            results.append(metrics)
+
+    return pd.DataFrame(results)
+
+
+def compute_match_aggregate_metrics(
+    predictions: pd.DataFrame,
+    target_col: str = "outcome",
+    pred_cols_map: dict[str, tuple[str, str, str]] | None = None
+) -> pd.DataFrame:
+    """Compute aggregate match outcome metrics across all cutoffs.
+
+    Args:
+        predictions: DataFrame from evaluate_match_baselines_at_cutoff concatenated across cutoffs.
+        target_col: Column name for true outcome.
+        pred_cols_map: Mapping from baseline name to (home_prob_col, draw_prob_col, away_prob_col).
+
+    Returns:
+        DataFrame with aggregate metrics per population and baseline.
+    """
+    if pred_cols_map is None:
+        pred_cols_map = {
+            "global_frequencies": ("global_home_prob", "global_draw_prob", "global_away_prob"),
+            "home_advantage": ("home_advantage_home_prob", "home_advantage_draw_prob", "home_advantage_away_prob"),
+            "team_strength": ("team_strength_home_prob", "team_strength_draw_prob", "team_strength_away_prob"),
+            "recent_form": ("recent_form_home_prob", "recent_form_draw_prob", "recent_form_away_prob"),
+        }
+
+    results = []
+
+    for population, group in predictions.groupby("population"):
+        y_true = group[target_col].values
+
+        for baseline_name, (home_col, draw_col, away_col) in pred_cols_map.items():
+            y_pred = np.column_stack([
+                group[home_col].values,
+                group[draw_col].values,
+                group[away_col].values,
+            ])
+
+            metrics = compute_match_metrics(y_true, y_pred)
             metrics.update({
                 "population": population,
                 "baseline": baseline_name,

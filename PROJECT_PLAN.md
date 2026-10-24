@@ -363,3 +363,38 @@ Phase 3 Stage 3.3 (Negative Binomial GLM) is complete and verified:
 
 - **Outputs:** `reports/phase3_stage33_report.md`, `reports/phase3_stage33_nb_predictions.parquet`
 - **Test suite:** 171 tests pass (15 new NB tests + 156 existing)
+
+## Phase 4 Stage 4.1 status — complete
+
+Phase 4 Stage 4.1 (match outcome baseline evaluation) is complete and verified:
+
+- **Implemented:** Four match outcome baselines in `src/features/match_baselines.py`:
+  - Global historical frequencies (Laplace smoothed)
+  - Home advantage (same as global, using home/away split)
+  - Team strength (home team home record + away team away record, fallback to global)
+  - Recent form (last 5 matches per team, combined perspective, fallback to global)
+- **Classification metrics added** to `src/evaluation/metrics.py`:
+  - Multiclass log loss (cross-entropy) with clipping and renormalization
+  - Multiclass Brier score (mean squared error vs one-hot targets)
+  - Accuracy (argmax of probabilities)
+- **Rolling-origin evaluation** in `src/evaluation/match_rolling.py`:
+  - Chronological cutoffs across all 38 matchweeks of 2015/16
+  - Strict `match_week < cutoff` history for training
+  - Simultaneous matchweek assumption (no within-week leakage)
+- **Leakage prevention:** All 6 leakage tests pass — injecting future matchweek data does not affect earlier-cutoff predictions
+- **Test suite:** 214 tests pass (37 new match outcome tests + 177 existing)
+- **Evaluation:** Rolling-origin on all 38 matchweeks (380 matches) of 2015/16 season
+
+**Aggregate results (2015/16, 380 matches):**
+
+| Model | Log Loss | Brier Score | Accuracy |
+|-------|----------|-------------|----------|
+| **Global Frequencies** | **1.0945** | **0.6632** | **0.4026** |
+| **Home Advantage** | **1.0945** | **0.6632** | **0.4026** |
+| Recent Form | 1.1184 | 0.6758 | 0.3789 |
+| Team Strength | 1.1357 | 0.6914 | 0.3500 |
+
+**Key finding:** The simple global frequencies (home/draw/away win rates) and home advantage baselines perform best on this dataset. Team strength and recent form baselines do not improve over the naive global frequencies, likely due to limited training data in early matchweeks and the single-season constraint. All baselines achieve ~40% accuracy, which is modest but expected given the inherent unpredictability of football matches.
+
+- **Outputs:** `reports/phase4_stage41_report.md`, `reports/phase4_stage41_predictions.parquet`, `reports/phase4_stage41_metrics_per_cutoff.parquet`, `reports/phase4_stage41_metrics_aggregate.parquet`
+- **Test suite:** 214 tests pass (37 new match outcome tests + 177 existing)
