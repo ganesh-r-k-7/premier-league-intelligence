@@ -44,7 +44,7 @@ class NBConfig:
     """
     alpha: float = 1.0              # L2 regularization strength (on coefficients)
     max_iter: int = 1000            # Maximum iterations for solver
-    tol: float = 1e-4               # Convergence tolerance
+    gtol: float = 1e-4              # Convergence tolerance (gradient norm for BFGS)
     min_train_samples: int = 50     # Minimum training samples required
     standardize: bool = True        # Whether to standardize features
     random_state: int | None = 42   # Random state for reproducibility
@@ -303,7 +303,8 @@ def tune_regularization_chronological(
             else:
                 if not STATSMODELS_AVAILABLE:
                     continue
-                nb_config = NBConfig(alpha=alpha, max_iter=config.max_iter, tol=config.tol)
+                gtol = config.gtol if hasattr(config, 'gtol') else config.tol
+                nb_config = NBConfig(alpha=alpha, max_iter=config.max_iter, gtol=gtol)
                 model, _ = _fit_nb(X_train, y_train, nb_config)
                 preds = _predict_nb(model, X_val)
             
@@ -352,7 +353,7 @@ def _fit_nb(
             fitted = model.fit(
                 maxiter=config.max_iter,
                 method='bfgs',
-                tol=config.tol,
+                gtol=config.gtol,
                 disp=False
             )
         except Exception as e:
@@ -360,7 +361,7 @@ def _fit_nb(
             poisson_model = PoissonRegressor(
                 alpha=config.alpha,
                 max_iter=config.max_iter,
-                tol=config.tol,
+                tol=config.gtol,
                 solver="newton-cholesky",
                 warm_start=False,
                 verbose=0
@@ -602,15 +603,16 @@ def train_glm_at_cutoff(
     """
     from src.features import compute_features_for_cutoff
 
-    # Get training data: all matchweeks before cutoff
+    # Get training data: matchweeks before cutoff with at least some history
+    # Skip matchweek 1 (no prior history -> constant fallback features)
     train_features = []
-    for cw in range(1, cutoff_week):
+    for cw in range(2, cutoff_week):
         feats = compute_features_for_cutoff(player_match, fixtures, cw, feature_config)
         if not feats.empty:
             train_features.append(feats)
 
     if not train_features:
-        # No training data (cutoff_week=1)
+        # No training data (cutoff_week <= 2)
         test_features = compute_features_for_cutoff(player_match, fixtures, cutoff_week, feature_config)
         if test_features.empty:
             return pd.DataFrame(), True
@@ -808,15 +810,16 @@ def train_nb_at_cutoff(
     """
     from src.features import compute_features_for_cutoff
 
-    # Get training data: all matchweeks before cutoff
+    # Get training data: matchweeks before cutoff with at least some history
+    # Skip matchweek 1 (no prior history -> constant fallback features)
     train_features = []
-    for cw in range(1, cutoff_week):
+    for cw in range(2, cutoff_week):
         feats = compute_features_for_cutoff(player_match, fixtures, cw, feature_config)
         if not feats.empty:
             train_features.append(feats)
 
     if not train_features:
-        # No training data (cutoff_week=1)
+        # No training data (cutoff_week <= 2)
         test_features = compute_features_for_cutoff(player_match, fixtures, cutoff_week, feature_config)
         if test_features.empty:
             return pd.DataFrame(), True

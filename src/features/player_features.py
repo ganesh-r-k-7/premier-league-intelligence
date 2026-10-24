@@ -354,7 +354,7 @@ def compute_features_for_cutoff(
     """Compute features for all players in a target matchweek.
 
     Args:
-        player_match: Full player_match DataFrame.
+        player_match: Full player_match DataFrame (may or may not have match_week).
         fixtures: Full fixtures DataFrame.
         cutoff_week: Target matchweek (1-38).
         config: FeatureConfig.
@@ -362,14 +362,17 @@ def compute_features_for_cutoff(
     Returns:
         DataFrame with one row per player in target matchweek, containing features.
     """
-    # Get target matchweek data - player_match already has match_date
-    target_pm = player_match.merge(
-        fixtures[["match_id", "match_week", "home_team_id", "away_team_id"]],
-        on="match_id",
-        how="left",
-        validate="m:1"
-    )
-    target_pm = target_pm[target_pm["match_week"] == cutoff_week].copy()
+    # Get target matchweek data - player_match may or may not have match_week
+    if "match_week" in player_match.columns:
+        target_pm = player_match[player_match["match_week"] == cutoff_week].copy()
+    else:
+        target_pm = player_match.merge(
+            fixtures[["match_id", "match_week", "home_team_id", "away_team_id"]],
+            on="match_id",
+            how="left",
+            validate="m:1"
+        )
+        target_pm = target_pm[target_pm["match_week"] == cutoff_week].copy()
 
     if target_pm.empty:
         return pd.DataFrame()
