@@ -12,6 +12,7 @@ from typing import Callable, Literal
 
 import numpy as np
 import pandas as pd
+from scipy.stats import poisson
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,8 @@ class SimulatorConfig:
     n_top_places: int = 4                 # Number of top places (e.g., Champions League)
     tiebreaker: Literal["points_only", "goal_diff_then_goals"] = "points_only"
                                         # Tiebreaker method for standings
+    simulation_mode: Literal["outcome", "scoreline"] = "outcome"
+                                        # "outcome" = W/D/L only, "scoreline" = simulate goals
 
 
 # Type for probability provider function
@@ -259,6 +262,44 @@ def simulate_match(
         return 0  # Away win
 
 
+def simulate_match_scoreline(
+    home_goal_rate: float,
+    away_goal_rate: float,
+    rng: np.random.Generator
+) -> tuple[int, int]:
+    """Simulate a match scoreline from independent Poisson distributions.
+    
+    Args:
+        home_goal_rate: Home team's expected goals (lambda for Poisson).
+        away_goal_rate: Away team's expected goals (lambda for Poisson).
+        rng: NumPy random generator.
+    
+    Returns:
+        Tuple of (home_goals, away_goals).
+    """
+    home_goals = rng.poisson(home_goal_rate)
+    away_goals = rng.poisson(away_goal_rate)
+    return int(home_goals), int(away_goals)
+
+
+def outcome_from_scoreline(home_goals: int, away_goals: int) -> int:
+    """Convert scoreline to outcome code.
+    
+    Args:
+        home_goals: Home team goals.
+        away_goals: Away team goals.
+    
+    Returns:
+        2 for home win, 1 for draw, 0 for away win.
+    """
+    if home_goals > away_goals:
+        return 2  # Home win
+    elif home_goals == away_goals:
+        return 1  # Draw
+    else:
+        return 0  # Away win
+
+
 def simulate_season(
     fixtures: pd.DataFrame,
     probability_provider: ProbabilityProvider,
@@ -364,36 +405,80 @@ def simulate_season(
             # Add already simulated matches to history
             # (In a more sophisticated version, we'd update this dynamically)
             
-            # Get probabilities
+# Get probabilities
             p_home, p_draw, p_away = probability_provider(match, history)
             validate_probabilities(p_home, p_draw, p_away, match_id)
             
-            # Simulate outcome
-            outcome = simulate_match(p_home, p_draw, p_away, rng)
+            if config.simulation_mode == "scoreline":
+                # Scoreline simulation mode: estimate goal rates from probabilities
+                p_total = p_home + p_draw + p_away
+                if p_total > 0:
+                    # Simple heuristic: outcome probabilities -> expected goals
+                    # Home win prob -> higher home goals, away win prob -> higher away goals
+                    home_goal_rate = 1.8 * p_home + 0.9 * p_draw + 0.3 * p_away
+                    away_goal_rate = 1.6 * p_away + 0.9 * p_draw + 0.2 * p_home
+                else:
+                    home_goal_rate = 1.4
+                    away_goal_rate = 1.2
+                
+                home_goals, away_goals = simulate_match_scoreline(home_goal_rate, away_goal_rate, rng)
+                outcome = outcome_from_scoreline(home_goals, away_goals)
+            else:
+                # Standard outcome simulation
+                outcome = simulate_match(p_home, p_draw, p_away, rng)
             
             # Update simulated standings
             home_id = match["home_team_id"]
             away_id = match["away_team_id"]
             
-            # For goal difference, we'd need to simulate scores
-            # For now, use expected GD based on outcome
-            if outcome == 2:  # Home win
-                sim_points[home_id] = sim_points.get(home_id, 0) + 3
-                sim_gd[home_id] = sim_gd.get(home_id, 0) + 1
-                sim_gd[away_id] = sim_gd.get(away_id, 0) - 1
-                sim_gs[home_id] = sim_gs.get(home_id, 0) + 2
-                sim_gs[away_id] = sim_gs.get(away_id, 0) + 0
-            elif outcome == 1:  # Draw
-                sim_points[home_id] = sim_points.get(home_id, 0) + 1
-                sim_points[away_id] = sim_points.get(away_id, 0) + 1
-                sim_gs[home_id] = sim_gs.get(home_id, 0) + 1
-                sim_gs[away_id] = sim_gs.get(away_id, 0) + 1
-            else:  # Away win
-                sim_points[away_id] = sim_points.get(away_id, 0) + 3
-                sim_gd[away_id] = sim_gd.get(away_id, 0) + 1
-                sim_gd[home_id] = sim_gd.get(home_id, 0) - 1
-                sim_gs[away_id] = sim_gs.get(away_id, 0) + 2
-                sim_gs[home_id] = sim_gs.get(home_id, 0) + 0
+            if config.simulation_mode == "scoreline":
+                # Scoreline simulation mode: we have actual goals
+                if 'home_goals' in locals() and 'away_goals' in locals():
+                    home_goals_val = home_goals
+                    away_goals_val = away_goals
+                else:
+                    # Fallback if scoreline not available
+                    home_goals_val = 2 if outcome == 2 else (1 if outcome == 1 else 0)
+                    away_goals_val = 2 if outcome == 0 else (1 if outcome == 1 else 0)
+                
+                if outcome == 2:  # Home win
+                    sim_points[home_id] = sim_points.get(home_id, 0) + 3
+                    sim_gd[home_id] = sim_gd.get(home_id, 0) + (home_goals_val - away_goals_val)
+                    sim_gd[away_id] = sim_gd.get(away_id, 0) + (away_goals_val - home_goals_val)
+                    sim_gs[home_id] = sim_gs.get(home_id, 0) + home_goals_val
+                    sim_gs[away_id] = sim_gs.get(away_id, 0) + away_goals_val
+                elif outcome == 1:  # Draw
+                    sim_points[home_id] = sim_points.get(home_id, 0) + 1
+                    sim_points[away_id] = sim_points.get(away_id, 0) + 1
+                    sim_gd[home_id] = sim_gd.get(home_id, 0) + (home_goals_val - away_goals_val)
+                    sim_gd[away_id] = sim_gd.get(away_id, 0) + (away_goals_val - home_goals_val)
+                    sim_gs[home_id] = sim_gs.get(home_id, 0) + home_goals_val
+                    sim_gs[away_id] = sim_gs.get(away_id, 0) + away_goals_val
+                else:  # Away win
+                    sim_points[away_id] = sim_points.get(away_id, 0) + 3
+                    sim_gd[away_id] = sim_gd.get(away_id, 0) + (away_goals_val - home_goals_val)
+                    sim_gd[home_id] = sim_gd.get(home_id, 0) + (home_goals_val - away_goals_val)
+                    sim_gs[away_id] = sim_gs.get(away_id, 0) + away_goals_val
+                    sim_gs[home_id] = sim_gs.get(home_id, 0) + home_goals_val
+            else:
+                # Standard outcome simulation
+                if outcome == 2:  # Home win
+                    sim_points[home_id] = sim_points.get(home_id, 0) + 3
+                    sim_gd[home_id] = sim_gd.get(home_id, 0) + 1
+                    sim_gd[away_id] = sim_gd.get(away_id, 0) - 1
+                    sim_gs[home_id] = sim_gs.get(home_id, 0) + 2
+                    sim_gs[away_id] = sim_gs.get(away_id, 0) + 0
+                elif outcome == 1:  # Draw
+                    sim_points[home_id] = sim_points.get(home_id, 0) + 1
+                    sim_points[away_id] = sim_points.get(away_id, 0) + 1
+                    sim_gs[home_id] = sim_gs.get(home_id, 0) + 1
+                    sim_gs[away_id] = sim_gs.get(away_id, 0) + 1
+                else:  # Away win
+                    sim_points[away_id] = sim_points.get(away_id, 0) + 3
+                    sim_gd[away_id] = sim_gd.get(away_id, 0) + 1
+                    sim_gd[home_id] = sim_gd.get(home_id, 0) - 1
+                    sim_gs[away_id] = sim_gs.get(away_id, 0) + 2
+                    sim_gs[home_id] = sim_gs.get(home_id, 0) + 0
         
         # Compute final standings for this simulation
         standings = []
@@ -549,6 +634,182 @@ def run_league_simulation(
 
 
 # Convenience function for simple probability provider using global frequencies
+def make_scoreline_poisson_provider(
+    fixtures: pd.DataFrame,
+    smoothing_alpha: float = 1.0,
+    home_advantage: float = 0.0,
+    min_history: int = 5
+) -> ProbabilityProvider:
+    """Create a probability provider using independent Poisson models for home and away goals.
+    
+    This provider estimates home and away goal rates from historical data and samples
+    from independent Poisson distributions to generate scorelines.
+    
+    Assumptions:
+    - Home and away goals are independent (a known limitation; real matches have dependence)
+    - Goal rates are estimated from historical data with Laplace smoothing
+    - Home advantage is modeled as an additive boost to home goal rate
+    
+    Args:
+        fixtures: Historical fixtures to compute goal rates from.
+        smoothing_alpha: Laplace smoothing parameter for goal rate estimation.
+        home_advantage: Additive boost to home team's goal rate (default 0.0).
+        min_history: Minimum matches required for team-specific rates.
+    
+    Returns:
+        ProbabilityProvider function returning (p_home, p_draw, p_away) derived from scorelines.
+    """
+    from src.features.match_baselines import compute_global_outcome_frequencies, MatchBaselineConfig
+    
+    # Pre-compute global average goals per match for fallback
+    valid_fixtures = fixtures.dropna(subset=["home_score", "away_score"])
+    if len(valid_fixtures) > 0:
+        global_home_goals = valid_fixtures["home_score"].mean()
+        global_away_goals = valid_fixtures["away_score"].mean()
+    else:
+        global_home_goals = 1.4
+        global_away_goals = 1.2
+    
+    # Pre-compute team-specific goal rates for each team (as home and as away)
+    team_home_rates = {}
+    team_away_rates = {}
+    
+    all_teams = set(fixtures["home_team_id"].unique()) | set(fixtures["away_team_id"].unique())
+    for team_id in all_teams:
+        # Home matches for this team
+        home_matches = fixtures[fixtures["home_team_id"] == team_id].dropna(subset=["home_score", "away_score"])
+        if len(home_matches) >= min_history:
+            team_home_rates[team_id] = home_matches["home_score"].mean()
+        else:
+            team_home_rates[team_id] = None
+            
+        # Away matches for this team
+        away_matches = fixtures[fixtures["away_team_id"] == team_id].dropna(subset=["home_score", "away_score"])
+        if len(away_matches) >= min_history:
+            team_away_rates[team_id] = away_matches["away_score"].mean()
+        else:
+            team_away_rates[team_id] = None
+    
+    config = MatchBaselineConfig(min_history=5, smoothing_alpha=1.0)
+    
+    def provider(match_row: pd.Series, history: pd.DataFrame) -> tuple[float, float, float]:
+        home_team_id = match_row["home_team_id"]
+        away_team_id = match_row["away_team_id"]
+        
+        # Get goal rates for home team (as home)
+        if home_team_id in team_home_rates and team_home_rates[home_team_id] is not None:
+            home_goal_rate = team_home_rates[home_team_id] + home_advantage
+        elif not history.empty:
+            # Fallback to history-specific average
+            valid_hist = history.dropna(subset=["home_score", "away_score"])
+            if len(valid_hist) > 0:
+                home_goal_rate = valid_hist["home_score"].mean() + home_advantage
+            else:
+                home_goal_rate = global_home_goals + home_advantage
+        else:
+            home_goal_rate = global_home_goals + home_advantage
+        
+        # Get goal rates for away team (as away)
+        if away_team_id in team_away_rates and team_away_rates[away_team_id] is not None:
+            away_goal_rate = team_away_rates[away_team_id]
+        elif not history.empty:
+            valid_hist = history.dropna(subset=["home_score", "away_score"])
+            if len(valid_hist) > 0:
+                away_goal_rate = valid_hist["away_score"].mean()
+            else:
+                away_goal_rate = global_away_goals
+        else:
+            away_goal_rate = global_away_goals
+        
+        # Ensure non-negative rates
+        home_goal_rate = max(0.01, home_goal_rate)
+        away_goal_rate = max(0.01, away_goal_rate)
+        
+        # Compute scoreline probabilities from independent Poissons
+        # We need to compute P(home win), P(draw), P(away win) from Poisson distributions
+        # P(home win) = sum_{h=0}^{inf} sum_{a=0}^{h-1} Pois(h; lambda_h) * Pois(a; lambda_a)
+        # P(draw) = sum_{k=0}^{inf} Pois(k; lambda_h) * Pois(k; lambda_a)
+        # P(away win) = sum_{a=0}^{inf} sum_{h=0}^{a-1} Pois(h; lambda_h) * Pois(a; lambda_a)
+        
+        # Compute up to reasonable max goals (e.g., 10)
+        max_goals = 10
+        p_home = 0.0
+        p_draw = 0.0
+        p_away = 0.0
+        
+        for h in range(max_goals + 1):
+            p_h = poisson.pmf(h, home_goal_rate)
+            for a in range(max_goals + 1):
+                p_a = poisson.pmf(a, away_goal_rate)
+                prob = p_h * p_a
+                if h > a:
+                    p_home += prob
+                elif h == a:
+                    p_draw += prob
+                else:
+                    p_away += prob
+        
+        # Renormalize (in case of truncation)
+        total = p_home + p_draw + p_away
+        if total > 0:
+            p_home /= total
+            p_draw /= total
+            p_away /= total
+        else:
+            # Fallback to uniform
+            p_home, p_draw, p_away = 1/3, 1/3, 1/3
+        
+        return (float(p_home), float(p_draw), float(p_away))
+    
+    return provider
+
+
+# =============================================================================
+# Scoreline simulation functions
+# =============================================================================
+
+def simulate_scoreline(
+    home_goal_rate: float,
+    away_goal_rate: float,
+    rng: np.random.Generator,
+    max_goals: int = 10
+) -> tuple[int, int]:
+    """Simulate a single match scoreline from independent Poisson distributions.
+    
+    Args:
+        home_goal_rate: Home team's expected goals (lambda for Poisson).
+        away_goal_rate: Away team's expected goals (lambda for Poisson).
+        rng: NumPy random generator.
+        max_goals: Maximum goals to consider (for validation).
+    
+    Returns:
+        Tuple of (home_goals, away_goals).
+    """
+    home_goals = rng.poisson(home_goal_rate)
+    away_goals = rng.poisson(away_goal_rate)
+    return int(home_goals), int(away_goals)
+
+
+def outcome_from_scoreline(home_goals: int, away_goals: int) -> int:
+    """Convert scoreline to outcome code.
+    
+    Args:
+        home_goals: Home team goals.
+        away_goals: Away team goals.
+    
+    Returns:
+        2 for home win, 1 for draw, 0 for away win.
+    """
+    if home_goals > away_goals:
+        return 2  # Home win
+    elif home_goals == away_goals:
+        return 1  # Draw
+    else:
+        return 0  # Away win
+# =============================================================================
+# Convenience functions for probability providers
+# =============================================================================
+
 def make_global_frequency_provider(
     fixtures: pd.DataFrame,
     smoothing_alpha: float = 1.0

@@ -401,6 +401,213 @@ def accuracy_score(
     return float(np.mean(y_true == y_pred_classes))
 
 
+# =============================================================================
+# Goal-level / scoreline metrics for match outcome prediction
+# =============================================================================
+
+def mean_absolute_error(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    """Compute Mean Absolute Error."""
+    return float(np.mean(np.abs(y_true - y_pred)))
+
+
+def root_mean_squared_error(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    """Compute Root Mean Squared Error."""
+    return float(np.sqrt(np.mean((y_true - y_pred) ** 2)))
+
+
+def poisson_log_likelihood(
+    y_true_home: np.ndarray,
+    y_true_away: np.ndarray,
+    y_pred_home_rate: np.ndarray,
+    y_pred_away_rate: np.ndarray,
+    warn_on_invalid: bool = True
+) -> float | None:
+    """Compute Poisson log-likelihood for scoreline predictions.
+    
+    For independent Poisson models: log P(h, a) = log Pois(h; λ_h) + log Pois(a; λ_a)
+    
+    Args:
+        y_true_home: Actual home goals.
+        y_true_away: Actual away goals.
+        y_pred_home_rate: Predicted home goal rate (lambda).
+        y_pred_away_rate: Predicted away goal rate (lambda).
+        warn_on_invalid: Whether to log warning when returning None.
+    
+    Returns:
+        Log-likelihood (higher is better), or None if invalid.
+    """
+    y_true_home = np.asarray(y_true_home, dtype=float)
+    y_true_away = np.asarray(y_true_away, dtype=float)
+    y_pred_home_rate = np.asarray(y_pred_home_rate, dtype=float)
+    y_pred_away_rate = np.asarray(y_pred_away_rate, dtype=float)
+    
+    if len(y_true_home) != len(y_pred_home_rate):
+        if warn_on_invalid:
+            logger.warning("Poisson LL: length mismatch")
+        return None
+    
+    if len(y_true_home) == 0:
+        return None
+    
+    # Check for valid rates
+    if np.any(y_pred_home_rate <= 0) or np.any(y_pred_away_rate <= 0):
+        if warn_on_invalid:
+            logger.warning("Poisson LL: non-positive rates")
+        return None
+    
+    if np.any(~np.isfinite(y_pred_home_rate)) or np.any(~np.isfinite(y_pred_away_rate)):
+        if warn_on_invalid:
+            logger.warning("Poisson LL: non-finite rates")
+        return None
+    
+    # Poisson log-likelihood: log P(x; λ) = x*log(λ) - λ - log(x!)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        log_prob_home = y_true_home * np.log(y_pred_home_rate) - y_pred_home_rate
+        log_prob_away = y_true_away * np.log(y_pred_away_rate) - y_pred_away_rate
+        
+        # Subtract log factorial (log(x!))
+        log_fact_home = np.sum([np.log(np.math.factorial(int(x))) for x in y_true_home.astype(int)])
+        log_fact_away = np.sum([np.log(np.math.factorial(int(x))) for x in y_true_away.astype(int)])
+    
+    if not np.all(np.isfinite(log_prob_home)) or not np.all(np.isfinite(log_prob_away)):
+        if warn_on_invalid:
+            logger.warning("Poisson LL: non-finite log probs")
+        return None
+    
+    log_likelihood = float(np.mean(log_prob_home + log_prob_away) - (log_fact_home + log_fact_away) / len(y_true_home))
+    return log_likelihood
+
+
+def compute_scoreline_metrics(
+    y_true_home: np.ndarray,
+    y_true_away: np.ndarray,
+    y_pred_home_rate: np.ndarray,
+    y_pred_away_rate: np.ndarray,
+    y_pred_scoreline_probs: np.ndarray | None = None
+) -> dict[str, float | None]:
+    """Compute all scoreline/goal-level metrics.
+    
+    Args:
+        y_true_home: Actual home goals.
+        y_true_away: Actual away goals.
+        y_pred_home_rate: Predicted home goal rate (lambda).
+        y_pred_away_rate: Predicted away goal rate (lambda).
+        y_pred_scoreline_probs: Optional predicted scoreline probabilities (not used yet).
+    
+    Returns:
+        Dictionary with MAE, RMSE for goals, Poisson log-likelihood, etc.
+    """
+    return {
+        "mae_home_goals": mean_absolute_error(y_true_home, y_pred_home_rate),
+        "rmse_home_goals": root_mean_squared_error(y_true_home, y_pred_home_rate),
+        "mae_away_goals": mean_absolute_error(y_true_away, y_pred_away_rate),
+        "rmse_away_goals": root_mean_squared_error(y_true_away, y_pred_away_rate),
+        "poisson_log_likelihood": poisson_log_likelihood(
+            y_true_home, y_true_away, y_pred_home_rate, y_pred_away_rate
+        ),
+        "sample_size": len(y_true_home),
+    }
+
+
+def compute_scoreline_metrics_per_cutoff(
+    predictions: pd.DataFrame,
+    target_home_col: str = "home_score",
+    target_away_col: str = "away_score",
+    pred_cols_map: dict[str, tuple[str, str]] | None = None
+) -> pd.DataFrame:
+    """Compute scoreline/goal metrics per cutoff week and model.
+    
+    Args:
+        predictions: DataFrame with true scores and predicted goal rates.
+        target_home_col: Column name for true home goals.
+        target_away_col: Column name for true away goals.
+        pred_cols_map: Mapping from model name to (home_rate_col, away_rate_col).
+    
+    Returns:
+        DataFrame with metrics per cutoff_week, population, and model.
+    """
+    if pred_cols_map is None:
+        pred_cols_map = {
+            "global_frequencies": ("global_home_rate", "global_away_rate"),
+            "recent_form": ("recent_form_home_rate", "recent_form_away_rate"),
+            "feature_model": ("model_home_rate", "model_away_rate"),
+        }
+    
+    results = []
+    
+    for (cutoff_week, population), group in predictions.groupby(["cutoff_week", "population"]):
+        y_true_home = group[target_home_col].values
+        y_true_away = group[target_away_col].values
+        
+        for model_name, (home_col, away_col) in pred_cols_map.items():
+            if home_col not in group.columns or away_col not in group.columns:
+                continue
+            
+            y_pred_home = group[home_col].values
+            y_pred_away = group[away_col].values
+            
+            metrics = compute_scoreline_metrics(
+                y_true_home, y_true_away, y_pred_home, y_pred_away
+            )
+            metrics.update({
+                "cutoff_week": cutoff_week,
+                "population": population,
+                "model": model_name,
+            })
+            results.append(metrics)
+    
+    return pd.DataFrame(results)
+
+
+def compute_scoreline_aggregate_metrics(
+    predictions: pd.DataFrame,
+    target_home_col: str = "home_score",
+    target_away_col: str = "away_score",
+    pred_cols_map: dict[str, tuple[str, str]] | None = None
+) -> pd.DataFrame:
+    """Compute aggregate scoreline metrics across all cutoffs.
+    
+    Args:
+        predictions: DataFrame with true scores and predicted goal rates.
+        target_home_col: Column name for true home goals.
+        target_away_col: Column name for true away goals.
+        pred_cols_map: Mapping from model name to (home_rate_col, away_rate_col).
+    
+    Returns:
+        DataFrame with aggregate metrics per population and model.
+    """
+    if pred_cols_map is None:
+        pred_cols_map = {
+            "global_frequencies": ("global_home_rate", "global_away_rate"),
+            "recent_form": ("recent_form_home_rate", "recent_form_away_rate"),
+            "feature_model": ("model_home_rate", "model_away_rate"),
+        }
+    
+    results = []
+    
+    for population, group in predictions.groupby("population"):
+        y_true_home = group[target_home_col].values
+        y_true_away = group[target_away_col].values
+        
+        for model_name, (home_col, away_col) in pred_cols_map.items():
+            if home_col not in group.columns or away_col not in group.columns:
+                continue
+            
+            y_pred_home = group[home_col].values
+            y_pred_away = group[away_col].values
+            
+            metrics = compute_scoreline_metrics(
+                y_true_home, y_true_away, y_pred_home, y_pred_away
+            )
+            metrics.update({
+                "population": population,
+                "model": model_name,
+            })
+            results.append(metrics)
+    
+    return pd.DataFrame(results)
+
+
 def compute_match_metrics(
     y_true: np.ndarray,
     y_pred_probs: np.ndarray
