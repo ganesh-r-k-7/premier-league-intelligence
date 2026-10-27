@@ -520,3 +520,39 @@ Phase 4 Stage 4.4 (goal-level league scoreline simulation) is complete and verif
 
 - **Outputs:** `reports/phase4_stage44_report.md`, `reports/phase4_stage44_standings.parquet`, `reports/phase4_stage44_title_probs.parquet`, `reports/phase4_stage44_top4_probs.parquet`, `reports/phase4_stage44_releg_probs.parquet`, `reports/phase4_stage44_exp_points.parquet`, `reports/phase4_stage44_exp_position.parquet`, `reports/phase4_stage44_pos_dist.parquet`, `reports/phase4_stage44_standings_scoreline.parquet`, `reports/phase4_stage44_title_probs_scoreline.parquet`, etc.
 - **Test suite:** 273 tests pass (35 new league simulator tests + 238 existing)
+
+## Phase 5 Stage 5.1 status — complete
+
+Phase 5 Stage 5.1 (player scouting profiles and position-aware rankings) is complete and verified:
+
+- **Implemented:** `src/features/player_scouting.py` with player scouting profiles, position-aware rankings, and player similarity:
+  - `build_player_profiles()`: Creates comprehensive player profiles from `player_season` data with per-90 rates, efficiency metrics (goals_per_shot, goals_over_xG, assists_over_xA), position bands, and sample size flags
+  - `compute_position_rankings()`: Position-aware rankings (GK, DEF, MID, WING, FWD) for goals, assists, xG, xA, shots, shooting efficiency — with configurable minimum minutes and xG sample thresholds
+  - `compute_similar_players()`: Cosine/euclidean similarity on standardized features within same position band, with feature contribution breakdown
+- **Configuration:** `ScoutingConfig` with thresholds for minutes, appearances, xG samples, percentile warnings, similarity settings
+- **Validation & safety:**
+  - Handles missing values, zero minutes, zero shots gracefully
+  - Minimum minutes/appearances/xG thresholds with fallback flags
+  - High per-90 warnings at configurable percentiles
+  - Similarity excludes self, filters by position band and minimum minutes
+  - Deterministic with fixed random seed
+- **Leakage prevention:** All data from single 2015/16 season, no future data used
+- **Test suite:** 300 tests pass (27 new scouting tests + 273 existing)
+
+**Scouting results (2015/16 season, 550 players, min 450 min):**
+
+| Metric | Top Player | Value | Percentile |
+|--------|------------|-------|------------|
+| **Goals/90 (FWD)** | Agüero | 0.90 | 100th |
+| **xG/90 (FWD)** | Agüero | 0.66 | 100th |
+| **Assists/90 (FWD)** | Rashford | 0.31 | 100th |
+| **xG/90 (MID)** | De Bruyne | 0.38 | 100th |
+
+**Similarity example:** Harry Kane most similar to Agüero (cosine=0.94), driven by goals/90, shots/90, xG/90.
+
+**Key finding:** Position-aware rankings reveal meaningful differentiation — top forwards by goals/90 differ from top by xG/90. Similarity finds stylistically similar players within position bands. Single-season data limits sample sizes; thresholds exclude low-minute players appropriately.
+
+- **Outputs:** `reports/phase5_stage51_profiles.parquet`, `reports/phase5_stage51_report.md`
+- **Test suite:** 300 tests pass (27 new scouting tests + 273 existing)
+
+- **Limitations documented:** Single season (2015/16) only — no cross-season validation; position from modal event, not lineup role; no market values or age data available; xG/xA only from StatsBomb 2015/16; similarity limited by single-season feature set.
