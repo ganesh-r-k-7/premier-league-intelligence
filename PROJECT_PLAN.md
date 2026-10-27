@@ -555,4 +555,35 @@ Phase 5 Stage 5.1 (player scouting profiles and position-aware rankings) is comp
 - **Outputs:** `reports/phase5_stage51_profiles.parquet`, `reports/phase5_stage51_report.md`
 - **Test suite:** 300 tests pass (27 new scouting tests + 273 existing)
 
-- **Limitations documented:** Single season (2015/16) only — no cross-season validation; position from modal event, not lineup role; no market values or age data available; xG/xA only from StatsBomb 2015/16; similarity limited by single-season feature set.
+## Phase 5 Stage 5.2 status — complete
+
+Phase 5 Stage 5.2 (transparent transfer scouting comparisons) is complete and verified:
+
+- **Implemented:** Player comparison and scouting priority modules in `src/features/player_comparison.py` and `src/features/scouting_priority.py`:
+  - `PlayerComparison` class for side-by-side comparisons with percentile ranks
+  - `ScoutingPriorityCalculator` with multi-component scoring (production vs peers, xG vs actual, playing time reliability, similarity to target)
+  - Configurable weights, thresholds, and similarity target
+  - Position-aware rankings and similarity within position bands
+- **Safeguards:** Weight validation (non-negative, auto-normalized), missing value flags, minimum thresholds, position-band scoping, coverage tracking
+- **Leakage prevention:** All temporal controls verified, identical-observation comparison enforced
+- **Test suite:** 334 tests pass (34 new comparison/priority tests + 300 existing)
+
+**Comparison results (2015/16, 550 players, min 450 min):**
+
+| Metric | Top Player | Value | Percentile |
+|--------|------------|-------|------------|
+| **Goals/90 (FWD)** | Agüero | 0.90 | 100th |
+| **xG/90 (FWD)** | Agüero | 0.66 | 100th |
+| **Assists/90 (FWD)** | Rashford | 0.31 | 100th |
+| **xG/90 (MID)** | De Bruyne | 0.38 | 100th |
+
+**Similarity example:** Harry Kane most similar to Agüero (cosine=0.94), driven by goals/90, shots/90, xG/90.
+
+**Key finding:** Position-aware rankings reveal meaningful differentiation — top forwards by goals/90 differ from top by xG/90. Similarity finds stylistic matches within position bands. Single-season data limits sample sizes; thresholds exclude low-minute players appropriately. No market value or age data available — similarity is statistical only.
+
+- **Outputs:** `reports/phase5_stage52_report.md`, `reports/phase5_stage52_profiles.parquet`, `reports/phase5_stage52_comparison.parquet`, `reports/phase5_stage52_priority.parquet`
+- **Test suite:** 334 tests pass (34 new comparison/priority tests + 300 existing)
+
+## Phase 5 Stage 5.3 status — pending
+
+Phase 5 Stage 5.3 (multi-season aggregation) will require additional StatsBomb seasons.
