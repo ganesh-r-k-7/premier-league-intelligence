@@ -755,11 +755,87 @@ Verified all 5 dashboard sections launch and function:
 - `reports/phase8.1_source_audit.md` — this audit
 - Updated `PROJECT_PLAN.md` with Phase 8.1 status
 
-## Phase 8.2 — Team & Season Registry Ingestion (next)
+## Phase 8.2 — Multi-Season Data Ingestion — complete
 
-- Build `teams.parquet` and `seasons.parquet` from football.json + FPL master_team_list
-- Establish stable team_id mapping across providers
-- Define season_id normalization (e.g., 2015 for 2015/16)
+### Sources Ingested
+
+| Source | License | PL Seasons | Matches | Player Stats | xG/xA | Status |
+|--------|---------|------------|---------|--------------|-------|--------|
+| **StatsBomb Open Data** | Attribution | 2015/16 (full) | 380 | ✅ (1 season) | ✅ | Preserved |
+| **openfootball/football.json** | CC0 (Public Domain) | 2010/11–2024/25 (15) | 5,700 | ❌ | ❌ | ✅ Complete |
+| **openfootball/football.json** | CC0 | 2025/26 (partial) | 380 | ❌ | ❌ | ⚠️ Partial |
+| **vaastav/FPL** | MIT | 2016/17–2025/26 (10) | 253,900 gw | ✅ (10 seasons) | 2022/23+ | ✅ Complete |
+
+**Total Match Coverage:** 16 seasons (2010/11–2025/26), 6,080 matches
+**Total Player-Match Coverage:** 10 seasons (2016/17–2025/26), 253,900 gameweek rows
+**Total Player-Season Coverage:** 10 seasons (2016/17–2025/26), 7,364 player-season rows
+
+### Normalized Processed Schemas Created
+
+| Table | Rows | Key Columns |
+|-------|------|-------------|
+| `matches.parquet` | 6,080 | match_id, season_id, home/away team_id, scores, provenance |
+| `teams.parquet` | 54 | team_id, team_name (canonical from football.json) |
+| `seasons.parquet` | 16 | season_id, season_name, season_dir |
+| `fpl_player_match.parquet` | 253,900 | player_id, gameweek, minutes, goals, assists, xG/xA (2022/23+), provenance |
+| `fpl_player_season.parquet` | 7,364 | player_id, season_id, appearances, goals, assists, xG/xA, per-90, provenance |
+| `team_registry.parquet` | 45 | canonical_name, statsbomb/football.json/FPL team_ids, confidence |
+| `player_registry.parquet` | 7,913 | canonical_name, statsbomb/FPL player_ids, match_key, confidence |
+
+### Identity Resolution Results
+
+| Entity | Method | Sources Matched | Canonical Count | Cross-Provider Matches |
+|--------|--------|-----------------|-----------------|------------------------|
+| **Teams** | Exact → normalized → dictionary | StatsBomb (29), football.json (41), FPL (20) | 45 | 13 exact, 8 normalized, 24 single_source |
+| **Players** | Canonical name + team + season + position | StatsBomb (550, 2015/16), FPL (7,364, 2016/17–2025/26) | 7,913 | 0 (different ID systems, no season overlap) |
+
+### Validation Summary
+
+**OpenFootball Matches:**
+- 15 seasons (2010/11–2024/25): ✅ 380 matches each, 20 teams
+- 2025/26: ⚠️ 380 matches, some malformed scores (logged as warnings)
+- 2026/27: ❌ Failed — most matches missing scores entirely
+
+**FPL Player Data:**
+- 10 seasons (2016/17–2025/26): ✅ All complete
+- Schema evolution handled: Legacy (2016/17–2018/19), Transitional (2019/20), Minimal (2020/21–2021/22), Full (2022/23+)
+- xG/xA available from 2022/23 (4 seasons), starts from 2022/23 (4 seasons)
+- Encoding issues handled with latin-1 fallback for 2016/17–2018/19
+
+**Cross-Provider Consistency:**
+- ✅ OpenFootball 2015/16 (380 matches) matches StatsBomb 2015/16 (380 matches)
+- ✅ FPL master_team_list team IDs stable across seasons
+- ⚠️ 0 cross-provider player matches — expected (no season overlap, different ID systems)
+
+### Files Added
+```
+src/data/ingest_openfootball_matches.py    # OpenFootball match ingestion
+src/data/ingest_fpl.py                     # FPL player ingestion
+src/data/team_mapping.py                   # Team identity resolution
+src/data/player_mapping.py                 # Player identity resolution
+src/data/ingest_multi_season.py            # Unified pipeline
+reports/phase8.2_ingestion_report.md       # This report
+```
+
+### Tests
+- **All 356 existing tests pass** — no regressions
+- New modules not yet unit-tested (follow-up)
+
+### Limitations Documented
+1. 2025/26 OpenFootball scores partially malformed
+2. 2026/27 OpenFootball excluded (incomplete)
+3. FPL xG/xA only 2022/23+ (4 of 10 seasons)
+4. FPL legacy seasons missing team/position for ~35% rows
+5. Cross-provider player matching requires manual curation
+6. No market value data available
+
+## Phase 8.3 — Dashboard Integration & Model Retraining (next)
+
+- Add season selector to dashboard
+- Multi-season charts and comparisons
+- Retrain models on multi-season data (chronological splits)
+- Chronological evaluation design (train 2016/17–2021/22 → validate 2022/23)
+- Manual player mapping curation for 1,067 unmatched players
 
 ## Phase 8 — Optional Features (future)
 - Fantasy points / captain optimization
