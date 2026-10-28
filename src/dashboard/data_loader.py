@@ -78,11 +78,14 @@ def load_player_match() -> pd.DataFrame:
 
 
 @lru_cache(maxsize=1)
-def load_fixtures() -> pd.DataFrame:
+def load_fixtures(season_id: int | None = None) -> pd.DataFrame:
     """Load fixtures data.
 
+    Args:
+        season_id: If provided, filter to this season. Defaults to TARGET_SEASON_ID.
+
     Returns:
-        DataFrame with all fixtures for the season.
+        DataFrame with fixtures for the specified season (default: 2015/2016).
 
     Raises:
         DataLoadError: If the file doesn't exist.
@@ -93,7 +96,10 @@ def load_fixtures() -> pd.DataFrame:
             f"Fixtures data not found at {fixtures_path}. "
             "Run the ingestion pipeline first (see README)."
         )
-    return pd.read_parquet(fixtures_path)
+    fixtures = pd.read_parquet(fixtures_path)
+    if season_id is None:
+        season_id = TARGET_SEASON_ID
+    return fixtures[fixtures["season_id"] == season_id].copy()
 
 
 @lru_cache(maxsize=1)
@@ -141,13 +147,16 @@ def get_season_info() -> dict:
     }
 
 
-def get_team_names() -> list[str]:
+def get_team_names(season_id: int | None = None) -> list[str]:
     """Get sorted list of team names.
+
+    Args:
+        season_id: If provided, filter to this season. Defaults to TARGET_SEASON_ID.
 
     Returns:
         List of team names.
     """
-    fixtures = load_fixtures()
+    fixtures = load_fixtures(season_id)
     home = fixtures["home_team_name"].unique()
     away = fixtures["away_team_name"].unique()
     return sorted(set(home) | set(away))

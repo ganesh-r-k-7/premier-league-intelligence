@@ -651,3 +651,68 @@ Access at `http://localhost:8501`
 - Expand test coverage for dashboard interactions
 - Finalize reproducibility documentation
 - Update README with complete setup and usage guide
+
+## Phase 7 — Tests, Documentation, Reproducibility — complete
+
+### Dataset Consistency Audit (Fixed)
+
+**Issue**: Dashboard reported 418 matches and 29 teams, but match-outcome evaluation used 380 matches and 20 teams.
+
+**Root Cause**: Fixtures Parquet contained both 2015/16 (380 matches, 20 teams) and 2003/04 (38 matches, partial, 20 teams — only 19 match weeks). Player data only contains 2015/16.
+
+**Fix**: Updated `src/dashboard/data_loader.py` `load_fixtures()` to filter by `TARGET_SEASON_ID=27` (2015/16) by default. All dashboard pages now use consistent 380-match, 20-team dataset matching the evaluation reports.
+
+**Verification**:
+- Player season: 550 players, 20 teams, 2015/16 only ✓
+- Player match: 10,469 rows, 2015/16 only ✓
+- Fixtures (filtered): 380 matches, 20 teams, 2015/16 ✓
+- All dashboard counts now match evaluation reports ✓
+
+### Dashboard End-to-End Verification
+
+Verified all 5 dashboard sections launch and function:
+- **Overview**: Season stats (380 matches, 20 teams, 550 players), top scorers, report viewer
+- **Player Explorer**: Search, filter (team/position/minutes), percentile bars, teammate comparison
+- **Scouting & Comparisons**: 4 tabs — comparison, percentiles, priority weights, similar players
+- **Match Analysis**: 4 baselines on 380 matches, feature model evaluation, confusion matrix placeholder
+- **League Simulator**: 3 providers, bounded sims (100–10K), progress bar, title/top-4/releg probs, expected table
+
+### Reproducibility
+
+- Fixed random seeds verified: `SimulatorConfig(random_seed=42)` produces identical results across runs
+- Model evaluation uses chronological rolling-origin with strict `match_week < cutoff` leakage prevention
+- Data ingestion deterministic with cached raw files (`--offline` mode)
+- README commands verified in clean environment (`.venv` + `requirements.txt`)
+- Dependencies pinned in `requirements.txt` (Python 3.14.4, numpy 2.5.4, pandas 3.0.6, etc.)
+- Generated datasets, raw data, virtual environments, secrets remain untracked (gitignored)
+
+### Tests & Code Quality
+
+- **All 356 tests pass** (334 core + 22 dashboard)
+- Added/updated `tests/test_dashboard.py` for data loader, utilities, edge cases
+- No regressions in existing modelling/evaluation tests
+- No new linting dependencies added; existing code style preserved
+
+### Documentation Updates
+
+- `README.md`: Corrected dataset coverage (380 matches, 20 teams), updated Phase 7 status, fixed limitations
+- `PROJECT_PLAN.md`: This Phase 7 summary appended
+- `reports/phase7_qa_report.md`: Detailed QA report (this section)
+
+### Phase 7 Exit Gate — MET
+
+✅ Dataset consistency reconciled (380 matches, 20 teams everywhere)  
+✅ Dashboard launches and all sections function  
+✅ Fixed random seeds produce repeatable outputs  
+✅ README commands work in clean environment  
+✅ All 356 tests pass  
+✅ No raw data, generated Parquet, secrets, or venv committed  
+✅ Documentation updated with actual coverage and limitations  
+
+## Phase 8 — Optional Features (future)
+
+- Multi-season data upgrade (requires additional StatsBomb seasons)
+- Fantasy points / captain optimization
+- Golden Boot prediction
+- Scenario analysis
+- AI analyst narrative generation

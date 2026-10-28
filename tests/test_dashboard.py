@@ -62,7 +62,7 @@ class TestDataLoader:
         """Test loading fixtures data."""
         df = load_fixtures()
         assert isinstance(df, pd.DataFrame)
-        assert len(df) == 418  # 380 PL matches + some other
+        assert len(df) == 380  # 2015/16 Premier League season only
         assert "match_id" in df.columns
         assert "home_team_id" in df.columns
         assert "away_team_id" in df.columns
@@ -93,8 +93,8 @@ class TestDataLoader:
         info = get_season_info()
         assert info["season_name"] == "2015/2016"
         assert info["season_id"] == 27
-        assert info["n_matches"] == 418  # Includes cup matches vs lower-division teams
-        assert info["n_teams"] == 29  # 20 PL teams + 9 cup opponents
+        assert info["n_matches"] == 380  # 2015/16 Premier League season
+        assert info["n_teams"] == 20  # 20 PL teams
         assert info["n_players"] == 550
         assert info["competition"] == "Premier League"
         assert info["source"] == "StatsBomb Open Data"
@@ -103,7 +103,7 @@ class TestDataLoader:
         """Test team names retrieval."""
         teams = get_team_names()
         assert isinstance(teams, list)
-        assert len(teams) == 29  # Includes cup opponents from lower divisions
+        assert len(teams) == 20  # 2015/16 Premier League teams
         assert "Arsenal" in teams
         assert "Chelsea" in teams
 

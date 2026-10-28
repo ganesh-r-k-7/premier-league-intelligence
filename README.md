@@ -4,10 +4,10 @@ A football analytics platform built on StatsBomb Open Data, implementing player 
 
 ## Current Status
 
-**Phase 6 Complete** — Interactive Streamlit dashboard integrating all validated analytics from Phases 2–5.
+**Phase 7 Complete** — Dashboard hardened, reproducibility verified, documentation updated.
 
 - **Data**: Premier League 2015/16 season (StatsBomb Open Data)
-- **Coverage**: 418 matches (380 league + 38 cup), 29 teams, 550 players
+- **Coverage**: 380 matches, 20 teams, 550 players (2015/16 PL only; 2003/04 partial data available but not used in evaluation)
 - **Test Suite**: 356 tests passing
 
 ## Quick Start
@@ -51,8 +51,8 @@ Open `http://localhost:8501` in your browser.
 | 3 | Market-value prediction & explainability | ✅ Complete (GLM + NegBin) |
 | 4 | Match prediction & league simulation | ✅ Complete |
 | 5 | Scouting & transfer comparison | ✅ Complete |
-| 6 | **Dashboard integration** | ✅ **Complete** |
-| 7 | Tests, docs, reproducibility | 🔄 Next |
+| 6 | Dashboard integration | ✅ Complete |
+| 7 | Tests, docs, reproducibility | ✅ **Complete** |
 | 8 | Optional features | ⏳ Future |
 
 ## Key Results Summary
@@ -100,12 +100,11 @@ Open `http://localhost:8501` in your browser.
 
 ## Limitations (Always Displayed)
 
-1. **Single season only** — No cross-season validation possible with PL data
-2. **Cup matches included** — 38 cup fixtures vs 9 lower-division teams in dataset
-3. **No market values** — Scouting is performance-only, no financial data
-4. **No injury/rotation signals** — Lineup data shows who played, not why others didn't
-5. **Independent Poisson assumption** — Scoreline simulation ignores goal dependence
-6. **Models don't beat baselines** — Feature models underperform simple heuristics on this data
+1. **Single season only** — No cross-season validation possible with PL data (2015/16 only; 2003/04 partial data available but not used in evaluation)
+2. **No market values** — Scouting is performance-only, no financial data
+3. **No injury/rotation signals** — Lineup data shows who played, not why others didn't
+4. **Independent Poisson assumption** — Scoreline simulation ignores goal dependence
+5. **Models don't beat baselines** — Feature models underperform simple heuristics on this data
 
 ## Project Structure
 
