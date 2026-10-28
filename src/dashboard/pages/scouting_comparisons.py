@@ -25,24 +25,42 @@ from src.dashboard.utils import (
 )
 
 
-def render_scouting_page() -> None:
+def render_scouting_page(source: str = "StatsBomb", season_name: str = "2015/16") -> None:
     """Render the Scouting & Comparisons page."""
     apply_custom_css()
 
     st.title("🎯 Scouting & Comparisons")
-    st.caption("Compare players, view position percentiles, and configure scouting priorities")
+    st.caption(f"Compare players, view position percentiles, and configure scouting priorities for {source} {season_name}")
 
-    show_data_warning(
-        "Scouting indicators are performance-based heuristics computed on 2015/16 data only. "
-        "They do not incorporate market values, age, contract status, injury history, or "
-        "multi-season consistency. These are not financial valuations or transfer recommendations."
-    )
+    # Show data source warning
+    if source == "StatsBomb":
+        show_data_warning(
+            "Scouting indicators are performance-based heuristics computed on 2015/16 data only. "
+            "They do not incorporate market values, age, contract status, injury history, or "
+            "multi-season consistency. These are not financial valuations or transfer recommendations."
+        )
+    elif source == "FPL":
+        fpl_info = get_fpl_metric_availability().get(season_name, {})
+        note = fpl_info.get("note", "FPL player statistics")
+        show_data_warning(
+            f"Scouting indicators are performance-based heuristics from FPL data for {season_name}. "
+            f"{note}. xG/xA available from 2022/23 onward. "
+            "These are not financial valuations or transfer recommendations."
+        )
+    else:
+        show_data_warning(
+            f"{source} provides match results only — no player-level statistics available for scouting."
+        )
 
     # Load data
     try:
-        profiles = load_player_profiles()
+        profiles = load_player_profiles(source=source, season_name=season_name)
     except Exception as e:
         st.error(f"Failed to load player data: {e}")
+        return
+
+    if profiles.empty:
+        st.warning(f"No player data available for {source} {season_name}.")
         return
 
     # Tabs for different scouting functions
@@ -318,7 +336,7 @@ def render_scouting_priority_tab(profiles: pd.DataFrame) -> None:
                 options=[None] + list(range(len(player_options))),
                 format_func=lambda i: "None" if i is None else player_options[i],
             )
-            target_id = None if target_idx is None else player_ids[target_idx]
+            target_id = None if target_idx is None else profiles["player_id"].iloc[target_idx]
 
     # Validate weights
     weights = {
@@ -358,7 +376,7 @@ def render_scouting_priority_tab(profiles: pd.DataFrame) -> None:
         "minutes", "priority_score", "coverage",
         "production_vs_peers", "xg_vs_actual", "playing_time_reliability",
     ]
-    if target_id:
+    if "similarity_to_target" in priority_df.columns:
         display_cols.append("similarity_to_target")
 
     display_df = priority_df.head(30)[display_cols].copy()
@@ -436,7 +454,7 @@ def render_similar_players_tab(profiles: pd.DataFrame) -> None:
         format_func=lambda i: player_options[i],
         key="similar_target",
     )
-    target_id = player_ids[target_idx]
+    target_id = profiles["player_id"].iloc[target_idx]
 
     # Configuration
     with st.expander("Similarity Settings"):

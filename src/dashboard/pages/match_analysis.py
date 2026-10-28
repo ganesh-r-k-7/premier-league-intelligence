@@ -7,7 +7,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.dashboard.data_loader import load_fixtures, load_report_files
+from src.dashboard.data_loader import load_fixtures_openfootball, load_report_files
 from src.dashboard.utils import (
     apply_custom_css,
     format_number,
@@ -18,125 +18,126 @@ from src.dashboard.utils import (
 )
 
 
-def render_match_analysis_page() -> None:
+def render_match_analysis_page(source: str = "StatsBomb", season_name: str = "2015/16") -> None:
     """Render the Match Analysis page."""
     apply_custom_css()
 
     st.title("📊 Match Analysis")
-    st.caption("Evaluated match outcome baselines and model performance for 2015/16")
+    st.caption(f"Match outcome analysis for {source} {season_name}")
 
-    show_data_warning(
-        "Match predictions shown are **historical evaluations** on the 2015/16 season using "
-        "chronological rolling-origin validation. They are NOT live predictions for current fixtures. "
-        "All models are baselines; the feature-enhanced model does not improve on simple baselines "
-        "with single-season data."
-    )
+    # Show data limitation warning based on source
+    if source == "StatsBomb":
+        show_data_warning(
+            "Match predictions shown are **historical evaluations** on the 2015/16 season using "
+            "chronological rolling-origin validation. They are NOT live predictions for current fixtures. "
+            "All models are baselines; the feature-enhanced model does not improve on simple baselines "
+            "with single-season data."
+        )
+    elif source == "OpenFootball":
+        show_data_warning(
+            "OpenFootball provides match results only (2010/11–2025/26). "
+            "No player-level data, xG, or model evaluations available. "
+            "2025/26 season has some malformed scores (partial data)."
+        )
+    elif source == "FPL":
+        show_data_warning(
+            "FPL provides player gameweek data (2016/17–2025/26). "
+            "Match results available via OpenFootball. No model evaluations available from FPL."
+        )
+    else:
+        show_data_warning(
+            f"{source} provides match results only. No player-level data or model evaluations available."
+        )
 
     # Load data
     try:
-        fixtures = load_fixtures()
+        if source == "StatsBomb":
+            from src.dashboard.data_loader import load_fixtures_statsbomb
+            fixtures = load_fixtures_statsbomb()
+        elif source == "OpenFootball":
+            fixtures = load_fixtures_openfootball(season_name)
+        elif source == "FPL":
+            fixtures = load_fixtures_openfootball(season_name)
+        else:
+            fixtures = pd.DataFrame()
+
         reports = load_report_files()
     except Exception as e:
         st.error(f"Failed to load data: {e}")
         return
 
+    if fixtures.empty:
+        st.warning(f"No match data available for {source} {season_name}.")
+        return
+
     # Tabs
     tab1, tab2, tab3, tab4 = st.tabs([
-        "📈 Baseline Performance",
+        "📈 Season Summary",
+        "📊 Match Results",
         "🎯 Model Evaluation",
-        "📋 Confusion Matrices",
         "📄 Reports",
     ])
 
     with tab1:
-        render_baseline_performance_tab(fixtures, reports)
+        render_season_summary_tab(fixtures, source, season_name)
 
     with tab2:
-        render_model_evaluation_tab(reports)
+        render_match_results_tab(fixtures, source, season_name)
 
     with tab3:
-        render_confusion_matrices_tab(reports)
+        render_model_evaluation_tab(reports)
 
     with tab4:
         render_reports_tab(reports)
 
 
-def render_baseline_performance_tab(fixtures: pd.DataFrame, reports: dict) -> None:
-    """Render baseline performance tab."""
-    st.header("Match Outcome Baselines")
+def render_season_summary_tab(fixtures: pd.DataFrame, source: str, season_name: str) -> None:
+    """Render season summary tab."""
+    st.header(f"📈 {source} {season_name} — Season Summary")
 
-    show_info_box(
-        "Baseline Models",
-        "Four baseline predictors are evaluated:\n"
-        "- **Global Frequencies**: Historical home/draw/away win rates (Laplace smoothed)\n"
-        "- **Home Advantage**: Same as global (home advantage captured in global rates)\n"
-        "- **Team Strength**: Home team's home record + away team's away record\n"
-        "- **Recent Form**: Last 5 matches per team (combined perspective)\n\n"
-        "All baselines use strictly prior matchweeks (no leakage)."
-    )
+    # Key metrics
+    total_matches = len(fixtures)
+    total_goals = int(fixtures["home_score_ft"].sum() + fixtures["away_score_ft"].sum())
+    home_goals = int(fixtures["home_score_ft"].sum())
+    away_goals = int(fixtures["away_score_ft"].sum())
+    avg_goals = total_goals / len(fixtures) if len(fixtures) > 0 else 0
 
-    # Load aggregate metrics if available
-    agg_report = None
-    for key in ["phase4_stage41_metrics_aggregate", "phase4_stage41_report"]:
-        if key in reports:
-            if reports[key].suffix == ".parquet":
-                agg_report = pd.read_parquet(reports[key])
-            break
-
-    if agg_report is not None:
-        st.subheader("Aggregate Metrics (2015/16, 380 matches)")
-        st.dataframe(agg_report, use_container_width=True, hide_index=True)
-
-        # Visualization
-        if "model" in agg_report.columns and "log_loss" in agg_report.columns:
-            fig = px.bar(
-                agg_report,
-                x="model",
-                y=["log_loss", "brier_score", "accuracy"],
-                title="Baseline Model Comparison",
-                barmode="group",
-                color_discrete_sequence=px.colors.qualitative.Set2,
-            )
-            fig.update_layout(xaxis_title="Model", yaxis_title="Metric Value")
-            st.plotly_chart(fig, use_container_width=True)
-    else:
-        # Show summary from PROJECT_PLAN.md
-        st.info("Detailed metrics available after running Phase 4 evaluation. Showing summary from documentation:")
-
-        summary_data = {
-            "Model": ["Global Frequencies", "Home Advantage", "Recent Form", "Team Strength"],
-            "Log Loss": [1.0945, 1.0945, 1.1184, 1.1357],
-            "Brier Score": [0.6632, 0.6632, 0.6758, 0.6914],
-            "Accuracy": [0.4026, 0.4026, 0.3789, 0.3500],
-        }
-        summary_df = pd.DataFrame(summary_data)
-        st.dataframe(summary_df, use_container_width=True, hide_index=True)
-
-        fig = px.bar(
-            summary_df,
-            x="Model",
-            y=["Log Loss", "Brier Score", "Accuracy"],
-            title="Baseline Model Comparison (from documentation)",
-            barmode="group",
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-    # Season outcome distribution
-    st.subheader("Actual Season Outcomes")
+    # Match outcomes
     fixtures_copy = fixtures.copy()
     fixtures_copy["outcome"] = fixtures_copy.apply(
-        lambda r: "Home Win" if r["home_score"] > r["away_score"]
-        else ("Draw" if r["home_score"] == r["away_score"] else "Away Win"),
+        lambda r: "Home Win" if r["home_score_ft"] > r["away_score_ft"]
+        else ("Draw" if r["home_score_ft"] == r["away_score_ft"] else "Away Win"),
         axis=1
     )
+    outcome_counts = fixtures_copy["outcome"].value_counts()
+    home_wins = outcome_counts.get("Home Win", 0)
+    draws = outcome_counts.get("Draw", 0)
+    away_wins = outcome_counts.get("Away Win", 0)
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
+        st.metric("Matches", format_number(total_matches))
+    with col2:
+        st.metric("Total Goals", format_number(total_goals))
+    with col3:
+        st.metric("Avg Goals/Match", f"{total_goals/total_matches:.2f}" if total_matches > 0 else "0.00")
+    with col4:
+        st.metric("Home Win %", f"{home_wins/total_matches*100:.1f}%" if total_matches > 0 else "0%")
+    with col5:
+        st.metric("Draw %", f"{draws/total_matches*100:.1f}%" if total_matches > 0 else "0%")
+
+    st.divider()
+
+    # Visualizations
+    col1, col2 = st.columns(2)
+
+    with col1:
+        # Outcome distribution
         outcome_counts = fixtures_copy["outcome"].value_counts()
         fig_pie = px.pie(
             values=outcome_counts.values,
             names=outcome_counts.index,
-            title="Actual Outcome Distribution",
+            title="Match Outcome Distribution",
             color=outcome_counts.index,
             color_discrete_map={
                 "Home Win": COLORS["home"],
@@ -147,32 +148,114 @@ def render_baseline_performance_tab(fixtures: pd.DataFrame, reports: dict) -> No
         st.plotly_chart(fig_pie, use_container_width=True)
 
     with col2:
-        # Home/away goals
-        fig_goals = px.box(
+        # Goals distribution
+        fixtures_copy = fixtures.copy()
+        fixtures_copy["total_goals"] = fixtures_copy["home_score_ft"] + fixtures_copy["away_score_ft"]
+        fig_goals = px.histogram(
             fixtures_copy,
-            y=["home_score", "away_score"],
+            x="total_goals",
+            nbins=10,
+            title="Goals per Match Distribution",
+            labels={"total_goals": "Total Goals", "count": "Matches"},
+            color_discrete_sequence=[COLORS["primary"]],
+        )
+        fig_goals.update_layout(showlegend=False, height=300)
+        st.plotly_chart(fig_goals, use_container_width=True)
+
+    st.divider()
+
+    # Home/Away goals
+    col1, col2 = st.columns(2)
+
+    with col1:
+        fig_ha = px.box(
+            fixtures,
+            y=["home_score_ft", "away_score_ft"],
             title="Goals Scored: Home vs Away",
             labels={"value": "Goals", "variable": "Venue"},
             color_discrete_sequence=[COLORS["home"], COLORS["away"]],
         )
-        st.plotly_chart(fig_goals, use_container_width=True)
+        st.plotly_chart(fig_ha, use_container_width=True)
+
+    with col2:
+        # Half-time vs Full-time
+        fixtures_copy = fixtures.copy()
+        fixtures_copy["ht_total"] = fixtures_copy["home_score_ht"] + fixtures_copy["away_score_ht"]
+        fixtures_copy["ft_total"] = fixtures_copy["home_score_ft"] + fixtures_copy["away_score_ft"]
+        fig_htft = px.scatter(
+            fixtures_copy,
+            x="ht_total",
+            y="ft_total",
+            title="Half-Time vs Full-Time Total Goals",
+            labels={"ht_total": "HT Total Goals", "ft_total": "FT Total Goals"},
+            trendline="ols",
+        )
+        st.plotly_chart(fig_htft, use_container_width=True)
+
+
+def render_match_results_tab(fixtures: pd.DataFrame, source: str, season_name: str) -> None:
+    """Render match results tab."""
+    st.header(f"📊 {season_name} Match Results")
+
+    # Add matchweek filter if available
+    if "match_week" in fixtures.columns and fixtures["match_week"].notna().any():
+        max_mw = int(fixtures["match_week"].max())
+        min_mw = int(fixtures["match_week"].min())
+        selected_mw = st.slider(
+            "Matchweek",
+            min_value=min_mw,
+            max_value=max_mw,
+            value=(min_mw, max_mw),
+        )
+        fixtures_filtered = fixtures[
+            (fixtures["match_week"] >= selected_mw[0]) & (fixtures["match_week"] <= selected_mw[1])
+        ].copy()
+    else:
+        fixtures_filtered = fixtures.copy()
+
+    # Show match results table
+    display_df = fixtures_filtered.copy()
+    display_df = display_df.sort_values("match_date" if "match_date" in display_df.columns else "match_week")
+
+    # Select display columns
+    cols_to_show = []
+    for col in ["match_date", "match_week", "home_team_name", "home_score_ft", "away_score_ft", "away_team_name", "match_week"]:
+        if col in display_df.columns:
+            cols_to_show.append(col)
+
+    if "match_date" in display_df.columns:
+        display_df["match_date"] = pd.to_datetime(display_df["match_date"]).dt.strftime("%Y-%m-%d")
+
+    # Create result column
+    display_df["Result"] = display_df.apply(
+        lambda r: f"{r['home_score_ft']} - {r['away_score_ft']}", axis=1
+    )
+
+    display_cols = ["match_date", "match_week", "home_team_name", "Result", "away_team_name"]
+    display_cols = [c for c in display_cols if c in display_df.columns]
+
+    st.dataframe(
+        display_df[display_cols].reset_index(drop=True),
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "match_date": "Date",
+            "match_week": "MW",
+            "home_team_name": "Home",
+            "Result": "Result",
+            "away_team_name": "Away",
+        },
+    )
+
+    st.caption(f"Showing {len(display_df)} of {len(fixtures)} matches")
 
 
 def render_model_evaluation_tab(reports: dict) -> None:
     """Render model evaluation tab."""
-    st.header("Feature-Enhanced Model Evaluation")
+    st.header("🎯 Model Evaluation")
 
-    show_info_box(
-        "Feature Model Results",
-        "A regularized multinomial logistic regression with rolling team stats, "
-        "home/away splits, head-to-head history, and rest days was evaluated. "
-        "**It does NOT improve on simple baselines** on this dataset due to:\n"
-        "- Insufficient training data (~140-280 matches for 50+ features)\n"
-        "- No head-to-head history in single season\n"
-        "- Constant features dropped\n"
-        "- Feature collinearity and overfitting risk\n\n"
-        "The best practical predictor remains the Recent Form baseline (~42% accuracy)."
-    )
+    # Only StatsBomb 2015/16 has model evaluations
+    st.info("Model evaluations are currently only available for StatsBomb 2015/16 data (Phase 4 evaluation).")
 
     # Load comparison metrics
     comp_report = None
@@ -183,7 +266,7 @@ def render_model_evaluation_tab(reports: dict) -> None:
             break
 
     if comp_report is not None:
-        st.subheader("Model vs Baselines (Cutoffs 10-20, 110 matches)")
+        st.subheader("Feature Model vs Baselines (Cutoffs 10-20, 110 matches)")
         st.dataframe(comp_report, use_container_width=True, hide_index=True)
 
         if "model" in comp_report.columns:
@@ -196,7 +279,6 @@ def render_model_evaluation_tab(reports: dict) -> None:
             )
             st.plotly_chart(fig, use_container_width=True)
     else:
-        # Summary from documentation
         st.info("Detailed metrics available after running Phase 4 Stage 4.2 evaluation.")
         summary_data = {
             "Model": ["Recent Form", "Global Frequencies", "Home Advantage", "Team Strength", "Feature Model"],
@@ -225,73 +307,12 @@ def render_model_evaluation_tab(reports: dict) -> None:
     )
 
 
-def render_confusion_matrices_tab(reports: dict) -> None:
-    """Render confusion matrices tab."""
-    st.header("Confusion Matrices")
-
-    show_info_box(
-        "Confusion Matrices",
-        "Confusion matrices show how often each model predicts each outcome vs actual. "
-        "Available after running the evaluation pipeline with prediction storage."
-    )
-
-    # Try to load predictions and compute confusion matrices
-    pred_report = None
-    for key in ["phase4_stage41_predictions", "phase4_stage42_predictions"]:
-        if key in reports and reports[key].suffix == ".parquet":
-            pred_report = pd.read_parquet(reports[key])
-            break
-
-    if pred_report is not None and "outcome" in pred_report.columns:
-        st.subheader("Confusion Matrices by Model")
-
-        # Identify probability columns
-        prob_cols = [c for c in pred_report.columns if c.endswith("_prob")]
-        model_names = set()
-        for c in prob_cols:
-            if c.startswith("global_"):
-                model_names.add("Global Frequencies")
-            elif c.startswith("home_advantage_"):
-                model_names.add("Home Advantage")
-            elif c.startswith("team_strength_"):
-                model_names.add("Team Strength")
-            elif c.startswith("recent_form_"):
-                model_names.add("Recent Form")
-            elif c.startswith("feature_"):
-                model_names.add("Feature Model")
-
-        for model in sorted(model_names):
-            st.markdown(f"#### {model}")
-
-            # Get prediction columns for this model
-            if model == "Global Frequencies":
-                pred_col = "global_home_prob"  # Use home prob as proxy, need argmax
-                # Actually we need to compute predicted class
-                pass
-
-            # For now, show placeholder
-            st.info(f"Confusion matrix for {model} - run evaluation with prediction storage to generate.")
-
-    else:
-        st.info("No prediction data found. Run the evaluation pipeline to generate confusion matrices.")
-
-        # Show example structure
-        st.markdown("**Expected Confusion Matrix Format:**")
-        example_cm = pd.DataFrame({
-            "Predicted\\Actual": ["Home Win", "Draw", "Away Win"],
-            "Home Win": [120, 30, 15],
-            "Draw": [25, 40, 20],
-            "Away Win": [10, 25, 95],
-        })
-        st.dataframe(example_cm, use_container_width=True, hide_index=True)
-
-
 def render_reports_tab(reports: dict) -> None:
     """Render reports tab."""
-    st.header("Available Reports")
+    st.header("📄 Available Reports")
 
     if not reports:
-        show_empty_state("No reports found. Run the evaluation pipeline to generate reports.")
+        st.info("No reports found. Run the evaluation pipeline to generate reports.")
         return
 
     match_reports = {k: v for k, v in reports.items() if "phase4" in k or "match" in k}

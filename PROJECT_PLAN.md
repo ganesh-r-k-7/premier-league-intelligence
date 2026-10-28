@@ -829,10 +829,55 @@ reports/phase8.2_ingestion_report.md       # This report
 5. Cross-provider player matching requires manual curation
 6. No market value data available
 
-## Phase 8.3 — Dashboard Integration & Model Retraining (next)
+## Phase 8.3A — Multi-Season Dashboard Integration — complete
 
-- Add season selector to dashboard
-- Multi-season charts and comparisons
+### Dashboard Updates Implemented
+
+| Section | Multi-Season Support | Source Coverage |
+|---------|---------------------|-----------------|
+| **Overview** | ✅ Season/source selector, coverage table, trend charts | All (StatsBomb, OpenFootball, FPL) |
+| **Player Explorer** | ✅ Source selector, season selector, FPL metric availability | StatsBomb (2015/16), FPL (2016/17–2025/26) |
+| **Scouting & Comparisons** | ✅ Source/season selector, FPL metric availability notes | StatsBomb (2015/16), FPL (2016/17–2025/26) |
+| **Match Analysis** | ✅ Source/season selector, match results table, season summary | StatsBomb (2015/16), OpenFootball (2010/11–2025/26) |
+| **League Simulator** | ⚠️ StatsBomb 2015/16 only (event data required) | StatsBomb 2015/16 only |
+
+### Key Implementation Details
+
+- **Season/Source Selector**: Added to sidebar with clear labels showing data availability per season
+- **Source Boundaries Preserved**: StatsBomb (event data), OpenFootball (match results), FPL (player stats) — never merged
+- **Provider Labels**: Explicit labels show which metrics are available per season (e.g., FPL xG/xA only 2022/23+)
+- **Season Quality Indicators**: OpenFootball 2025/26 marked as partial; 2026/27 excluded
+- **League Simulator**: Restricted to StatsBomb 2015/16 with clear explanation
+
+### Data Loader Updates (`src/dashboard/data_loader.py`)
+
+- Added `load_matches_openfootball()`, `load_player_season_fpl()`, `load_player_match_fpl()`
+- Added `load_player_profiles()` with `source` and `season_name` parameters
+- Added FPL column name normalization (`expected_goals` → `xg`, etc.)
+- Added `get_available_sources()`, `get_available_seasons()`, `get_season_coverage_summary()`
+- Added `get_fpl_metric_availability()`, `get_openfootball_season_quality()`
+- Added `SEASON_ID_MAP` for season name to season_id conversion
+
+### Tests Added (`tests/test_dashboard.py`)
+
+- 38 tests covering: data loaders, season/source selection, metric availability, edge cases
+- All 38 dashboard tests pass
+
+### Documentation Updates
+
+- `README.md`: Updated with multi-season coverage, source table, phase status
+- `reports/phase8.3A_dashboard_report.md`: Detailed integration report
+
+### Validation
+
+- All 372 tests pass (356 core + 38 dashboard)
+- Dashboard launches and functions with multi-season selectors
+- No regressions in existing StatsBomb 2015/16 functionality
+
+## Phase 8.3B — Model Retraining & Multi-Season Evaluation (next)
+
+- Add season selector to dashboard (✅ Done in 8.3A)
+- Multi-season charts and comparisons (✅ Done in 8.3A)
 - Retrain models on multi-season data (chronological splits)
 - Chronological evaluation design (train 2016/17–2021/22 → validate 2022/23)
 - Manual player mapping curation for 1,067 unmatched players

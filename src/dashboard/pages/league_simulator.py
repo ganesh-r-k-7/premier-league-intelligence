@@ -11,7 +11,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.dashboard.data_loader import load_fixtures
+from src.dashboard.data_loader import load_fixtures_statsbomb
 from src.models.league_simulator import (
     SimulatorConfig,
     run_league_simulation,
@@ -30,12 +30,30 @@ from src.dashboard.utils import (
 )
 
 
-def render_league_simulator_page() -> None:
+def render_league_simulator_page(source: str = "StatsBomb", season_name: str = "2015/16") -> None:
     """Render the League Simulator page."""
     apply_custom_css()
 
     st.title("🏆 League Simulator")
-    st.caption("Monte Carlo simulation of the 2015/16 Premier League season")
+    st.caption(f"Monte Carlo simulation for {source} {season_name}")
+
+    # Only StatsBomb 2015/16 supports simulation
+    if source != "StatsBomb" or season_name != "2015/16":
+        show_data_warning(
+            "The League Simulator is currently only available for StatsBomb 2015/16 data, "
+            "which has the detailed event data needed for probability providers. "
+            "OpenFootball and FPL sources only provide match results or player stats, "
+            "not the detailed event data required for probability providers."
+        )
+        show_info_box(
+            "Simulation Availability",
+            "**StatsBomb 2015/16**: Full simulation with 3 probability providers\n\n"
+            "**OpenFootball (2010/11–2025/26)**: Match results only — no probability providers\n\n"
+            "**FPL (2016/17–2025/26)**: Player statistics only — no match simulation\n\n"
+            "To simulate other seasons, you would need detailed event data (passes, shots, pressures, etc.) "
+            "which is only available in StatsBomb 2015/16."
+        )
+        return
 
     show_data_warning(
         "Simulations use historical 2015/16 data and probability providers evaluated on that season. "
@@ -46,7 +64,7 @@ def render_league_simulator_page() -> None:
 
     # Load fixtures
     try:
-        fixtures = load_fixtures()
+        fixtures = load_fixtures_statsbomb()
     except Exception as e:
         st.error(f"Failed to load fixtures: {e}")
         return
@@ -148,23 +166,7 @@ def run_simulation(
     home_adv: float = 0.15,
     min_hist: int = 5,
 ) -> None:
-    """Run the league simulation and display results.
-
-    Args:
-        fixtures: Fixtures DataFrame.
-        provider_type: Type of probability provider.
-        n_simulations: Number of Monte Carlo simulations.
-        random_seed: Random seed for reproducibility.
-        sim_mode: Simulation mode (outcome or scoreline).
-        points_win: Points for a win.
-        points_draw: Points for a draw.
-        n_relegation: Number of relegation places.
-        n_top: Number of top places.
-        tiebreaker: Tiebreaker method.
-        form_window: Window for recent form provider.
-        home_adv: Home advantage for Poisson provider.
-        min_hist: Minimum history for team-specific rates.
-    """
+    """Run the league simulation and display results."""
     config = SimulatorConfig(
         n_simulations=n_simulations,
         random_seed=random_seed,
@@ -204,8 +206,6 @@ def run_simulation(
     start_time = time.time()
 
     try:
-        # We need to wrap the provider to add progress tracking
-        # For now, run without callback (the simulator doesn't support it yet)
         status_text.text("Running simulation...")
 
         results = run_league_simulation(
@@ -229,12 +229,7 @@ def run_simulation(
 
 
 def display_results(results: dict, config: SimulatorConfig) -> None:
-    """Display simulation results.
-
-    Args:
-        results: Results dictionary from run_league_simulation.
-        config: SimulatorConfig used.
-    """
+    """Display simulation results."""
     st.divider()
     st.header("📊 Simulation Results")
 
@@ -243,7 +238,7 @@ def display_results(results: dict, config: SimulatorConfig) -> None:
     all_standings = results["standings"]
 
     # Load team names for display
-    fixtures = load_fixtures()
+    fixtures = load_fixtures_statsbomb()
     team_id_to_name = {}
     for _, row in fixtures.iterrows():
         team_id_to_name[row["home_team_id"]] = row["home_team_name"]

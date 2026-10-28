@@ -4,11 +4,13 @@ A football analytics platform built on StatsBomb Open Data, implementing player 
 
 ## Current Status
 
-**Phase 7 Complete** — Dashboard hardened, reproducibility verified, documentation updated.
+**Phase 8.3A Complete** — Multi-season dashboard integration with three data sources (StatsBomb, OpenFootball, FPL).
 
-- **Data**: Premier League 2015/16 season (StatsBomb Open Data)
-- **Coverage**: 380 matches, 20 teams, 550 players (2015/16 PL only; 2003/04 partial data available but not used in evaluation)
-- **Test Suite**: 356 tests passing
+- **Data**: Three sources covering 2010/11–2025/26
+  - **StatsBomb**: 2015/16 (380 matches, 20 teams, 550 players, event data)
+  - **OpenFootball**: 2010/11–2025/26 (16 seasons, 6,080 matches, match results only)
+  - **FPL**: 2016/17–2025/26 (10 seasons, 253,900 player-match rows, 7,364 player-seasons, xG/xA from 2022/23)
+- **Test Suite**: 372 tests passing
 
 ## Quick Start
 
@@ -24,6 +26,7 @@ pip install -r requirements.txt
 
 # 3. Ingest data (uses cached raw files offline)
 python -m src.data.ingest_players --offline
+python -m src.data.ingest_multi_season --offline
 
 # 4. Launch dashboard
 streamlit run src/dashboard/app.py
@@ -35,11 +38,11 @@ Open `http://localhost:8501` in your browser.
 
 | Section | Description |
 |---------|-------------|
-| **Overview** | Dataset coverage, season statistics, top scorers, report viewer |
-| **Player Explorer** | Search/filter players, view per-90 metrics, percentile ranks, teammate comparisons |
-| **Scouting & Comparisons** | Side-by-side player comparison, position percentiles, configurable scouting priority scores, similar players analysis |
-| **Match Analysis** | Evaluated baseline performance (4 baselines), feature model evaluation, confusion matrices, reports |
-| **League Simulator** | Monte Carlo simulation with 3 probability providers, title/top-4/relegation probabilities, expected final table |
+| **Overview** | Multi-source, multi-season coverage summary, season-level trends, source comparison |
+| **Player Explorer** | Search/filter players across StatsBomb (2015/16) and FPL (2016/17–2025/26); per-90 metrics, percentile ranks, teammate comparisons |
+| **Scouting & Comparisons** | Side-by-side player comparison, position percentiles, configurable scouting priority scores, similar players analysis (per source/season) |
+| **Match Analysis** | Season summary, match results table, model evaluation (StatsBomb 2015/16 only) |
+| **League Simulator** | Monte Carlo simulation (StatsBomb 2015/16 only — requires event data) |
 
 ## Project Phases
 
@@ -52,7 +55,11 @@ Open `http://localhost:8501` in your browser.
 | 4 | Match prediction & league simulation | ✅ Complete |
 | 5 | Scouting & transfer comparison | ✅ Complete |
 | 6 | Dashboard integration | ✅ Complete |
-| 7 | Tests, docs, reproducibility | ✅ **Complete** |
+| 7 | Tests, docs, reproducibility | ✅ Complete |
+| 8.1 | Multi-season data source audit | ✅ Complete |
+| 8.2 | Multi-season data ingestion | ✅ Complete |
+| 8.3A | Multi-season dashboard integration | ✅ **Complete** |
+| 8.3B | Model retraining & evaluation | ⏳ Future |
 | 8 | Optional features | ⏳ Future |
 
 ## Key Results Summary
@@ -88,11 +95,20 @@ Open `http://localhost:8501` in your browser.
 - Scouting priority: multi-component scoring with configurable weights
 - **Explicitly labelled as heuristics, not predictions or valuations**
 
+### Phase 8.1/8.2: Multi-Season Data
+| Source | License | Seasons | Matches | Player Stats | xG/xA |
+|--------|---------|---------|---------|--------------|-------|
+| **StatsBomb** | Attribution | 2015/16 | 380 | ✅ | ✅ |
+| **OpenFootball** | CC0 | 2010/11–2025/26 (15 complete) | 6,080 | ❌ | ❌ |
+| **FPL** | MIT | 2016/17–2025/26 (10) | 253,900 gw | ✅ | 2022/23+ |
+
 ## Data Sources
 
 | Source | Coverage | License | Status |
 |--------|----------|---------|--------|
 | StatsBomb Open Data | PL 2015/16 (full), 2003/04 (partial) | Open for research, attribution required | ✅ Primary |
+| openfootball/football.json | PL 2010/11–2025/26 (match results) | CC0 (Public Domain) | ✅ Complete |
+| vaastav/Fantasy-Premier-League | PL 2016/17–2025/26 (player stats) | MIT | ✅ Complete |
 | Understat | PL 2014/15+ | robots.txt disallows, no open license | ❌ Not used |
 | FBref | Basic only (xG removed 2026) | ToS prohibits scraping | ❌ Not used |
 | Football-Data.co.uk | Match-level only | 403 from this environment | ❌ Not viable |
@@ -100,11 +116,14 @@ Open `http://localhost:8501` in your browser.
 
 ## Limitations (Always Displayed)
 
-1. **Single season only** — No cross-season validation possible with PL data (2015/16 only; 2003/04 partial data available but not used in evaluation)
-2. **No market values** — Scouting is performance-only, no financial data
-3. **No injury/rotation signals** — Lineup data shows who played, not why others didn't
-4. **Independent Poisson assumption** — Scoreline simulation ignores goal dependence
-5. **Models don't beat baselines** — Feature models underperform simple heuristics on this data
+1. **StatsBomb single season only** — No cross-season validation possible with PL data
+2. **OpenFootball partial 2025/26** — Some malformed scores
+3. **FPL xG/xA only 2022/23+** — Legacy seasons lack advanced metrics
+4. **FPL missing team/position** for legacy seasons (~35% rows)
+5. **No cross-provider player matching** — Different ID systems, no season overlap
+6. **No market values** — Scouting is performance-only
+7. **League Simulator only for StatsBomb 2015/16** — Requires event data
+7. **Models don't beat baselines** — Feature models underperform simple heuristics on this data
 
 ## Project Structure
 
@@ -115,12 +134,12 @@ premier-league-intelligence/
 │   ├── features/       # Player/match features, baselines, scouting
 │   ├── models/         # GLM, match model, league simulator
 │   ├── evaluation/     # Metrics, rolling evaluation
-│   └── dashboard/      # Streamlit app (Phase 6)
+│   └── dashboard/      # Streamlit app (Phases 6, 8.3A)
 ├── data/
-│   ├── raw/            # Immutable StatsBomb JSON (gitignored, ~1.1 GB)
+│   ├── raw/            # Immutable StatsBomb JSON, OpenFootball JSON, FPL CSV (gitignored)
 │   └── processed/      # Parquet datasets (gitignored)
 ├── reports/            # Markdown & parquet reports
-├── tests/              # 356 tests
+├── tests/              # 372 tests
 ├── requirements.txt    # Pinned dependencies
 ├── PROJECT_PLAN.md     # Phase tracking & decisions
 └── ARCHITECTURE.md     # System design
@@ -130,7 +149,7 @@ premier-league-intelligence/
 
 ```bash
 source .venv/bin/activate
-python -m pytest           # All 356 tests
+python -m pytest           # All 372 tests
 python -m pytest tests/test_dashboard.py -v  # Dashboard tests only
 ```
 
@@ -149,12 +168,19 @@ All phase reports in `reports/`:
 - `phase5_stage51_report.md` — Player scouting profiles
 - `phase5_stage52_report.md` — Player comparison & priority
 - `phase6_dashboard_report.md` — Dashboard integration summary
+- `phase8.1_source_audit.md` — Multi-season source audit
+- `phase8.2_ingestion_report.md` — Multi-season ingestion report
+- `phase8.3A_dashboard_report.md` — Multi-season dashboard integration report
 
 ## Attribution
 
-**Data Source**: StatsBomb Open Data — https://github.com/statsbomb/open-data  
-Used under open data license for research purposes. Attribution required.
+**Data Sources**: 
+- StatsBomb Open Data — https://github.com/statsbomb/open-data  
+- openfootball/football.json — https://github.com/openfootball/football.json
+- vaastav/Fantasy-Premier-League — https://github.com/vaastav/Fantasy-Premier-League
+
+Used under open data licenses for research purposes. Attribution required.
 
 ## License
 
-This project is for research and educational purposes. StatsBomb data subject to their terms.
+This project is for research and educational purposes. Source data subject to their respective terms.

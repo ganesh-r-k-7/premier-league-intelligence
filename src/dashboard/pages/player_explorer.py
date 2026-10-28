@@ -13,6 +13,7 @@ from src.dashboard.data_loader import (
     get_position_bands,
     search_players,
     get_comparison_metrics,
+    get_fpl_metric_availability,
 )
 from src.dashboard.utils import (
     apply_custom_css,
@@ -28,23 +29,41 @@ from src.dashboard.utils import (
 )
 
 
-def render_player_explorer_page() -> None:
+def render_player_explorer_page(source: str = "StatsBomb", season_name: str = "2015/16") -> None:
     """Render the Player Explorer page."""
     apply_custom_css()
 
     st.title("🔍 Player Explorer")
-    st.caption("Search, filter, and explore Premier League 2015/16 player statistics")
+    st.caption(f"Search, filter, and explore {source} player statistics for {season_name}")
 
-    show_data_warning(
-        "Player statistics are from the 2015/16 Premier League season only (StatsBomb Open Data). "
-        "Per-90 metrics for players with low minutes may be unreliable and are flagged."
-    )
+    # Show data source warning
+    if source == "StatsBomb":
+        show_data_warning(
+            "Player statistics are from the 2015/16 Premier League season only (StatsBomb Open Data). "
+            "Per-90 metrics for players with low minutes may be unreliable and are flagged."
+        )
+    elif source == "FPL":
+        fpl_info = get_fpl_metric_availability().get(season_name, {})
+        note = fpl_info.get("note", "FPL player statistics")
+        show_data_warning(
+            f"Player statistics are from FPL gameweek data for {season_name}. "
+            f"{note}. xG/xA available from 2022/23 onward. "
+            "Per-90 metrics for players with low minutes may be unreliable and are flagged."
+        )
+    else:
+        show_data_warning(
+            f"{source} provides match results only — no player-level statistics available."
+        )
 
     # Load data
     try:
-        profiles = load_player_profiles()
+        profiles = load_player_profiles(source=source, season_name=season_name)
     except Exception as e:
         st.error(f"Failed to load player data: {e}")
+        return
+
+    if profiles.empty:
+        st.warning(f"No player data available for {source} {season_name}.")
         return
 
     # Sidebar filters
@@ -55,7 +74,7 @@ def render_player_explorer_page() -> None:
         search_query = st.text_input("🔍 Search player", placeholder="Enter player name...")
 
         # Team filter
-        teams = ["All"] + get_team_names()
+        teams = ["All"] + get_team_names(source=source, season_name=season_name)
         selected_team = st.selectbox("Team", teams)
 
         # Position filter
@@ -63,19 +82,21 @@ def render_player_explorer_page() -> None:
         selected_band = st.selectbox("Position Band", bands)
 
         # Minimum minutes
+        max_minutes = int(profiles["minutes"].max()) if len(profiles) > 0 and "minutes" in profiles.columns else 3420
         min_minutes = st.slider(
             "Minimum Minutes",
             min_value=0,
-            max_value=int(profiles["minutes"].max()),
+            max_value=max_minutes,
             value=0,
             step=90,
         )
 
         # Minimum appearances
+        max_apps = int(profiles["appearances"].max()) if len(profiles) > 0 and "appearances" in profiles.columns else 38
         min_apps = st.slider(
             "Minimum Appearances",
             min_value=0,
-            max_value=int(profiles["appearances"].max()),
+            max_value=max_apps,
             value=0,
             step=1,
         )
@@ -109,9 +130,17 @@ def render_player_explorer_page() -> None:
         show_empty_state("No players match the current filters. Try adjusting your criteria.")
         return
 
+    # Show FPL metric availability note
+    if source == "FPL":
+        fpl_info = get_fpl_metric_availability().get(season_name, {})
+        if fpl_info.get("xG") or fpl_info.get("xA"):
+            st.info(f"✅ {season_name}: xG/xA and starts data available")
+        else:
+            st.warning(f"⚠️ {season_name}: {fpl_info.get('note', 'Limited metrics')}")
+
     # Metric selection for table
     st.subheader("Display Metrics")
-    available_metrics = get_comparison_metrics()
+    available_metrics = get_comparison_metrics(source=source, season_name=season_name)
     metric_cols = [m[0] for m in available_metrics]
 
     default_display = [
@@ -167,6 +196,10 @@ def render_player_explorer_page() -> None:
             "shots_per_90": "Shots/90",
             "shots_on_target": "SoT",
             "shots_on_target_per_90": "SoT/90",
+            "expected_goals": "xG (FPL)",
+            "expected_assists": "xA (FPL)",
+            "expected_goals_per_90": "xG/90 (FPL)",
+            "expected_assists_per_90": "xA/90 (FPL)",
         },
     )
 
@@ -187,12 +220,7 @@ def render_player_explorer_page() -> None:
 
 
 def render_player_detail(player: pd.Series, all_profiles: pd.DataFrame) -> None:
-    """Render detailed view for a single player.
-
-    Args:
-        player: Player row from profiles DataFrame.
-        all_profiles: Full profiles DataFrame for percentile calculations.
-    """
+    """Render detailed view for a single player."""
     col1, col2 = st.columns([1, 2])
 
     with col1:
@@ -209,25 +237,37 @@ def render_player_detail(player: pd.Series, all_profiles: pd.DataFrame) -> None:
         m1, m2, m3 = st.columns(3)
         m1.metric("Goals", format_number(player.get("goals", 0)))
         m2.metric("Assists", format_number(player.get("assists", 0)))
-        m3.metric("xG", f"{player.get('xg', 0):.2f}")
+
+        # xG/xA (different column names for different sources)
+        xg_val = player.get("xg", player.get("expected_goals", 0))
+        xa_val = player.get("xa", player.get("expected_assists", 0))
+        m3.metric("xG", f"{xg_val:.2f}")
 
         # Per-90 rates
         st.markdown("**Per 90 Minutes**")
         p1, p2, p3 = st.columns(3)
-        p1.metric("Goals/90", f"{player.get('goals_per_90', 0):.2f}")
-        p2.metric("Assists/90", f"{player.get('assists_per_90', 0):.2f}")
-        p3.metric("xG/90", f"{player.get('xg_per_90', 0):.2f}")
+        g90 = player.get("goals_per_90", 0)
+        a90 = player.get("assists_per_90", 0)
+        xg90 = player.get("xg_per_90", player.get("expected_goals_per_90", 0))
+        p1.metric("Goals/90", f"{g90:.2f}")
+        p2.metric("Assists/90", f"{a90:.2f}")
+        p3.metric("xG/90", f"{xg90:.2f}")
 
         p1, p2, p3 = st.columns(3)
-        p1.metric("Shots/90", f"{player.get('shots_per_90', 0):.2f}")
-        p2.metric("SoT/90", f"{player.get('shots_on_target_per_90', 0):.2f}")
-        p3.metric("xA/90", f"{player.get('xa_per_90', 0):.2f}")
+        s90 = player.get("shots_per_90", 0)
+        sot90 = player.get("shots_on_target_per_90", 0)
+        xa90 = player.get("xa_per_90", player.get("expected_assists_per_90", 0))
+        p1.metric("Shots/90", f"{s90:.2f}")
+        p2.metric("SoT/90", f"{sot90:.2f}")
+        p3.metric("xA/90", f"{xa90:.2f}")
 
         # Efficiency metrics
         st.markdown("**Efficiency**")
         e1, e2 = st.columns(2)
-        e1.metric("Goals/Shot", f"{player.get('goals_per_shot', 0):.3f}")
-        e2.metric("Goals/xG", f"{player.get('goals_over_xg', 0):.2f}")
+        gs = player.get("goals_per_shot", 0)
+        goxg = player.get("goals_over_xg", 0)
+        e1.metric("Goals/Shot", f"{gs:.3f}")
+        e2.metric("Goals/xG", f"{goxg:.2f}")
 
         # Flags
         if player.get("minutes_flag", "ok") != "ok":
@@ -236,7 +276,8 @@ def render_player_detail(player: pd.Series, all_profiles: pd.DataFrame) -> None:
             st.warning(f"⚠️ Low appearances: {player['appearances_flag']}")
 
         # High per-90 warnings
-        for col in ["goals_per_90", "assists_per_90", "xg_per_90", "shots_per_90"]:
+        for col in ["goals_per_90", "assists_per_90", "xg_per_90", "shots_per_90",
+                    "expected_goals_per_90", "expected_assists_per_90"]:
             flag_col = f"{col}_high_warning"
             if player.get(flag_col, False):
                 st.info(f"ℹ️ High {col.replace('_', ' ')} (above 95th percentile)")
@@ -254,6 +295,8 @@ def render_player_detail(player: pd.Series, all_profiles: pd.DataFrame) -> None:
             ("assists_per_90", "Assists/90"),
             ("xg_per_90", "xG/90"),
             ("xa_per_90", "xA/90"),
+            ("expected_goals_per_90", "xG/90 (FPL)"),
+            ("expected_assists_per_90", "xA/90 (FPL)"),
             ("shots_per_90", "Shots/90"),
             ("shots_on_target_per_90", "SoT/90"),
             ("goals_per_shot", "Goals/Shot"),
@@ -269,7 +312,7 @@ def render_player_detail(player: pd.Series, all_profiles: pd.DataFrame) -> None:
                     pct = (ref_values <= value).mean() * 100
                     color = POSITION_BAND_COLORS.get(band, COLORS["primary"])
                     fig = create_percentile_bar(pct, color)
-                    st.plotly_chart(fig, use_container_width=True, key=f"pct_{metric}")
+                    st.plotly_chart(fig, use_container_width=True, key=f"pct_{metric}_{player.name}")
                     st.caption(f"{label}: {value:.2f} ({pct:.0f}th percentile)")
 
     st.divider()
@@ -287,7 +330,7 @@ def render_player_detail(player: pd.Series, all_profiles: pd.DataFrame) -> None:
             "Metric to compare",
             options=[m[0] for m in get_comparison_metrics()],
             format_func=lambda x: dict(get_comparison_metrics()).get(x, x),
-            key=f"compare_{player['player_id']}",
+            key=f"compare_{player.get('player_id', player.name)}",
         )
         fig = create_bar_comparison(
             team_players,
