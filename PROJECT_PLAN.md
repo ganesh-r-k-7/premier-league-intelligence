@@ -709,9 +709,59 @@ Verified all 5 dashboard sections launch and function:
 ✅ No raw data, generated Parquet, secrets, or venv committed  
 ✅ Documentation updated with actual coverage and limitations  
 
-## Phase 8 — Optional Features (future)
+## Phase 8.1 — Multi-Season Data Source Audit — complete
 
-- Multi-season data upgrade (requires additional StatsBomb seasons)
+### Current Coverage (Verified)
+- **Fixtures:** 2015/16 only (380 matches, 20 teams) — StatsBomb Open Data
+- **Player-Match:** 10,469 rows, 2015/16 only — StatsBomb events + lineups
+- **Player-Season:** 550 rows, 2015/16 only — StatsBomb aggregated
+- **Partial 2003/04:** Fixtures only (38 matches, 19 match weeks) — no player data
+
+### Candidate Sources Assessed
+
+| Source | License | PL Seasons | Match Results | Player Stats | xG/xA | Player IDs | Status |
+|--------|---------|------------|---------------|--------------|-------|------------|--------|
+| **StatsBomb Open Data** | Attribution | 2015/16 (full), 2003/04 (partial) | ✅ | ✅ (1 season) | ✅ | StatsBomb ID | **Current primary** |
+| **openfootball/football.json** | CC0 (Public Domain) | 2010/11–2026/27 (17) | ✅ | ❌ | ❌ | None | **Recommended for match results** |
+| **openfootball/england** | CC0 (Public Domain) | 2000/01–2026/27 (27) | ✅ | Rosters only | ❌ | None | **Recommended for squads/age** |
+| **vaastav/FPL** | MIT | 2016/17–2025/26 (10) | Via fixture | ✅ (10 seasons) | 2022/23+ | FPL element ID | **Recommended for player stats** |
+| **Understat** | None (robots.txt Disallow) | 2014/15–2026/27 (13) | ✅ | ✅ | ✅ | None | **Rejected — legal risk** |
+| **FBref** | ToS prohibits scraping | 1992/93–present | ✅ | ✅ | ✅ | None | **Rejected — access blocked** |
+| **Football-Data.co.uk** | Unclear | 1993/94–present | ✅ | ❌ | ❌ | None | **Fallback only (403 here)** |
+
+### Recommended Architecture
+- **Provider-specific adapters** in `src/data/ingest_<provider>.py`
+- **Raw snapshots** preserved under `data/raw/{statsbomb,fpl,openfootball}/`
+- **Standardized processed schemas** with provenance columns: `matches`, `teams`, `players`, `player_season`, `player_match`, `player_mapping`
+- **Identity resolution** via `player_mapping` table (fuzzy name/team/season/position + manual curation for top players)
+- **Incremental, reproducible ingestion** with `--offline` mode and pinned dependencies
+
+### Multi-Season Evaluation Design
+- **Chronological splits only:** Train on earlier seasons, validate on later held-out season
+- **Training/validation boundaries:** e.g., Train 2016/17–2021/22 → Validate 2022/23 (xG available); Train 2010/11–2021/22 → Validate 2022/23 (match outcomes)
+- **Feature availability rules:** xG/xA only 2022/23+ (FPL); starts only 2022/23+; age from openfootball squads (partial)
+- **Cross-provider reconciliation:** Match results consistency, team name mapping, player aggregation audits
+- **Benchmark comparison:** Multi-season model metrics vs. 2015/16 single-season baselines
+
+### Decisions Requiring Review
+1. **Primary match-results source:** football.json (CC0, 17 seasons) — recommended
+2. **Primary player-stat source:** FPL (MIT, 10 seasons, xG from 2022/23) — recommended
+3. **Player identity resolution:** Automated fuzzy + manual curation for top 100 players
+4. **Market value:** No viable public source — defer
+5. **2003/04 StatsBomb partial data:** Exclude from player modelling; keep in fixtures with `data_quality="partial"` flag
+6. **xG cut-off:** Only model for 2022/23+ — no imputation
+
+### Outputs
+- `reports/phase8.1_source_audit.md` — this audit
+- Updated `PROJECT_PLAN.md` with Phase 8.1 status
+
+## Phase 8.2 — Team & Season Registry Ingestion (next)
+
+- Build `teams.parquet` and `seasons.parquet` from football.json + FPL master_team_list
+- Establish stable team_id mapping across providers
+- Define season_id normalization (e.g., 2015 for 2015/16)
+
+## Phase 8 — Optional Features (future)
 - Fantasy points / captain optimization
 - Golden Boot prediction
 - Scenario analysis
