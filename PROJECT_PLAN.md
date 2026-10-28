@@ -587,3 +587,67 @@ Phase 5 Stage 5.2 (transparent transfer scouting comparisons) is complete and ve
 ## Phase 5 Stage 5.3 status — pending
 
 Phase 5 Stage 5.3 (multi-season aggregation) will require additional StatsBomb seasons.
+
+## Phase 6 Dashboard Integration — complete
+
+Phase 6 delivers a polished, interactive Streamlit dashboard exposing all validated analytics from Phases 2–5.
+
+### Dashboard Sections Implemented
+
+| Section | File | Key Features |
+|---------|------|--------------|
+| **Overview** | `pages/overview.py` | Dataset coverage (418 matches, 29 teams, 550 players), season stats, top scorers, navigation, report viewer |
+| **Player Explorer** | `pages/player_explorer.py` | Search, filter (team/position/minutes), configurable metrics table, player detail with percentile bars, teammate comparison |
+| **Scouting & Comparisons** | `pages/scouting_comparisons.py` | 4 tabs: Player Comparison (side-by-side + radar), Position Percentiles (top-20 + distribution), Scouting Priority (configurable weights, coverage), Similar Players (cosine/euclidean + feature contributions) |
+| **Match Analysis** | `pages/match_analysis.py` | 4 tabs: Baseline Performance (4 baselines, 380 matches), Model Evaluation (feature model vs baselines), Confusion Matrices (placeholder), Reports |
+| **League Simulator** | `pages/league_simulator.py` | 3 providers (Global, Recent Form, Scoreline Poisson), bounded simulations (100–10K), progress bar, title/top-4/releg probs, expected table, position distributions |
+
+### Architecture & Performance
+
+- Dashboard code in `src/dashboard/` separate from feature/model logic
+- Reuses existing public interfaces (`PlayerComparison`, `ScoutingPriorityCalculator`, `LeagueSimulator`)
+- `@lru_cache` on all data loaders — avoids rereading Parquet on every interaction
+- No raw data, Parquet datasets, model binaries, or secrets committed
+- Graceful error messages if data missing with setup instructions
+- Simulation controls bounded (max 10K sims, deterministic seed default)
+
+### Explicit Limitations Labelled in UI
+
+- **Data**: Premier League 2015/16 only (StatsBomb Open Data), 418 matches including cup ties vs 9 lower-division teams
+- **Scouting**: Performance-based heuristics only — no market values, age, contracts, injury history, multi-season consistency
+- **Match Analysis**: Historical evaluations only — NOT live predictions; feature model does not beat baselines on single-season data
+- **Simulator**: Simulation mechanics ≠ predictive accuracy; independent Poisson assumption documented
+
+### Testing
+
+- Added `tests/test_dashboard.py`: 22 tests for data loaders, utilities, edge cases, error handling
+- **Full test suite: 356 tests pass** (334 existing + 22 new)
+
+### Outputs
+
+- `reports/phase6_dashboard_report.md` — this summary
+- Dashboard source: `src/dashboard/` (10 files, ~2,500 lines)
+
+### Launch Instructions
+
+```bash
+source .venv/bin/activate
+python -m src.data.ingest_players --offline  # if data not present
+streamlit run src/dashboard/app.py
+```
+Access at `http://localhost:8501`
+
+### Phase 6 Exit Gate — MET
+
+✅ Dashboard shows all planned pages  
+✅ Every page shows validated predictions only  
+✅ Unavailable data never faked — explicit limitations shown  
+✅ Test suite passes (356 tests)  
+✅ No raw data, binaries, or secrets committed  
+✅ Dashboard runs locally with documented setup
+
+## Phase 7 — Tests, Documentation, Reproducibility (next)
+
+- Expand test coverage for dashboard interactions
+- Finalize reproducibility documentation
+- Update README with complete setup and usage guide
