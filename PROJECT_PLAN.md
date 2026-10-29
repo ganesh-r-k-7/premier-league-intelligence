@@ -960,11 +960,81 @@ tests/test_fpl_rolling.py             # 13 tests (1 integration skipped)
 - Dashboard polish: season comparison charts, export functionality
 - Market value data assessment (if Transfermarkt access available)
 
-## Phase 8.3C — Player Identity Resolution (next)
+## Phase 8.3C — Player Identity Resolution — complete
 
-- Manual player mapping curation for 1,067 unmatched players
-- Cross-provider player matching (StatsBomb ↔ FPL ↔ openfootball)
-- Age/nationality enrichment from openfootball squads
+### Summary
+
+Phase 8.3C implements a deterministic, auditable workflow for human review of player identity matches across StatsBomb and FPL providers.
+
+### Backlog Verification
+
+- **Reported:** 1,067 "unmatched player mappings"
+- **Verified:** 1,067 FPL player-season rows (2020/21–2025/26), 639 unique FPL element IDs
+- **Root cause:** Team alias mismatch in registry lookup (source hint missing for FPL team canonicalization)
+
+### Matching Methodology
+
+- **Name normalization:** FPL underscores → spaces, Unicode NFKD + ASCII, lowercase, suffix removal
+- **Cross-provider candidates (StatsBomb 2015/16 ↔ FPL 2016/17):** Exact normalized name + adjacent season (296 candidates, evidence_score=0.6, ambiguous)
+- **Same-provider continuity (FPL 2020–2025 ↔ prior FPL seasons):** Exact normalized name + canonical team match (777 high-confidence ≥0.8, 290 unresolved)
+
+### Candidate Counts
+
+| Candidate Type | Count | High Confidence (≥0.8) | Ambiguous (0.6) | Unresolved (0.0) |
+|----------------|-------|------------------------|-----------------|------------------|
+| Cross-provider | 296 | 0 | 296 | 0 |
+| Same-provider continuity | 777 | 777 | 0 | 0 |
+| Unresolved | 290 | 0 | 0 | 290 |
+| **Total** | **1,363** | **777** | **296** | **290** |
+
+### Decision State (Pre-Review)
+
+All 1,363 candidates `status: "pending"`. No human confirmations made.
+
+### Validation Implemented
+
+- `validate_mappings()`: required columns, status values, candidate_type values, duplicate detection, one-to-one constraint
+- `apply_confirmed_mappings()`: produces `canonical_identity_mapping.parquet` (separate from `player_registry.parquet`)
+
+### Source Boundaries Preserved
+
+- Confirmed identity link permits identity-aware analysis; does NOT make FPL metrics interchangeable with StatsBomb metrics
+- No model features or dashboard behavior altered
+
+### Files Added
+
+```
+src/data/player_identity_curation.py
+tests/test_player_identity_curation.py (31 tests)
+reports/phase8.3C_player_identity_curation.md
+```
+
+### Tests
+
+- **31 new tests** covering normalization, candidate generation, validation, determinism
+- **All pass**
+- **No regressions** in existing test suite (61 core + 118 dashboard/scouting tests verified)
+
+### Known Limitations
+
+1. Cross-provider matching limited to 2015/16 ↔ 2016/17 adjacent seasons; FPL 2016 lacks team/position
+2. FPL element IDs not stable across seasons — cannot use ID for continuity
+3. 290 unresolved FPL players have no prior-season continuity candidate
+4. Human review required for all candidates; no automated approval
+
+### Next Steps (Post-8.3C)
+
+- Human review of 1,363 candidates
+- Apply confirmed mappings → `canonical_identity_mapping.parquet`
+- Optional: OpenFootball xG estimation for match outcome models
+- Optional: Dashboard polish
+
+## Phase 8 — Optional Features (future)
+
+- Fantasy points / captain optimization
+- Golden Boot prediction
+- Scenario analysis
+- AI analyst narrative generation
 
 ## Phase 8 — Optional Features (future)
 

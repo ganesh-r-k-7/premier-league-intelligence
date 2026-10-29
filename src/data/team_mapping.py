@@ -385,7 +385,7 @@ def map_team_id(
         return None
 
     canonical = get_canonical_name(source_name, source)
-    match = registry[registry["canonical_name"] == canonical_name]
+    match = registry[registry["canonical_name"] == canonical]
     if not match.empty:
         return int(match.iloc[0]["team_id"])
 
