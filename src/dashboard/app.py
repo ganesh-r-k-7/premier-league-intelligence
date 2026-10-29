@@ -9,6 +9,7 @@ from src.dashboard.pages.player_explorer import render_player_explorer_page
 from src.dashboard.pages.scouting_comparisons import render_scouting_page
 from src.dashboard.pages.match_analysis import render_match_analysis_page
 from src.dashboard.pages.league_simulator import render_league_simulator_page
+from src.dashboard.pages.identity_review import main as render_identity_review_page
 from src.dashboard.utils import apply_custom_css
 from src.dashboard.data_loader import (
     _check_data_exists,
@@ -105,6 +106,7 @@ def main() -> None:
                 "🎯 Scouting & Comparisons",
                 "📈 Match Analysis",
                 "🏆 League Simulator",
+                "🔍 Identity Review",
             ],
             index=0,
         )
@@ -137,6 +139,8 @@ def main() -> None:
         render_match_analysis_page(selected_source, selected_season)
     elif page == "🏆 League Simulator":
         render_league_simulator_page(selected_source, selected_season)
+    elif page == "🔍 Identity Review":
+        render_identity_review_page()
 
 
 if __name__ == "__main__":

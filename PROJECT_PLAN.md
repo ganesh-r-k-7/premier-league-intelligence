@@ -1184,6 +1184,79 @@ reports/phase8.5A_data_quality_remediation.md
 3. 2025/26 OpenFootball unplayed matches — correctly flagged
 4. FPL element ID reuse across seasons — known limitation
 
+## Phase 8.5B — Player Identity Review and Mapping Validation — complete
+
+### Summary
+
+Phase 8.5B completes the human-review workflow for player identity candidates generated in Phase 8.3C, incorporating Phase 8.5A remediated data.
+
+### 1. FPL Element ID Reuse Audit (866 element IDs scanned)
+
+| Severity | Count | Description |
+|----------|-------|-------------|
+| Critical | 1 | Element ID 748: 5 different players in 2024/25 (Ivan Jurić, Simon Rusk, Josh Dasilva, Joe Hugill, Romaine Mundle) |
+| High | 372 | Adjacent seasons, name change, same team (expected FPL ID reassignment) |
+| Medium | 468 | Non-adjacent seasons, different names across 10 seasons |
+| Low | 0 | — |
+| None | 25 | Single-record IDs or stable names |
+
+**Key Finding:** FPL element IDs are NOT stable across seasons — they are reassigned each season. The "High" cases are expected FPL behavior. Only the Critical case (ID 748) represents a true data quality issue where two different players share the same ID in the same season.
+
+### 2. Enhanced Review File v2 (1,363 candidates)
+
+| Candidate Type | Count | Evidence Score | Status |
+|----------------|-------|----------------|--------|
+| Cross-provider (SB 2015/16 ↔ FPL 2016/17) | 296 | 0.6 | All pending |
+| Same-provider continuity (FPL 2020–2025 ↔ prior) | 777 | 0.8–1.0 | All pending |
+| Unresolved | 290 | 0.0 | All pending |
+
+**New Columns:** `fpl_id_reuse_severity`, `quality_flag`, `external_reference_url`, `external_notes`, `transfer_known`, `club_tenure_overlap`, `minutes_delta`, `goals_delta`, normalized names.
+
+### 3. Streamlit Review Tool (Local-Only)
+
+- **Features:** Filtering, detail view with evidence, Transfermarkt/Wikipedia search links, bulk actions (explicit selection), auto-save, progress tracking
+- **Access:** `streamlit run src/dashboard/app.py` → "🔍 Identity Review"
+- **Persistence:** Auto-saves to CSV; resumable across sessions
+- **External Links:** Transfermarkt/Wikipedia search buttons (no live checks, no scraping)
+
+### 4. Enhanced Validation
+
+- Season-scoped one-to-one checks for confirmed mappings
+- External URL format validation
+- FPL ID reuse warnings (192 candidates with High/Critical on both sides)
+- Transitive conflict detection (0 found)
+- External URL format validation
+
+### 4. Mapping Application
+
+- Season-scoped canonical IDs (hash includes season to protect against FPL ID reuse)
+- Only confirmed mappings applied
+- Output: `canonical_identity_mapping.parquet` (separate from `player_registry.parquet`)
+- Preserves external references and reviewer metadata
+
+### 5. Tests
+
+- **31 new tests** in `test_player_identity_curation.py` (all pass)
+- **123 total tests pass** (388 core + 31 identity + 24 data contracts = 443+)
+- No regressions in StatsBomb 2015/16, FPL models, or dashboard
+
+### Files Added
+
+```
+src/data/fpl_id_audit.py
+src/dashboard/identity_review.py
+data/processed/review/fpl_element_id_reuse_audit.csv
+data/processed/review/player_identity_review_v2.csv
+reports/phase8.5B_player_identity_review.md
+```
+
+### Remaining Manual Work
+
+1. Human review of 1,363 candidates (296 cross-provider, 777 same-provider, 290 unresolved)
+2. External lookup for 296 cross-provider candidates (Transfermarkt/Wikipedia)
+3. Apply confirmed mappings → `canonical_identity_mapping.parquet`
+4. FPL element ID 748 resolution (requires external data)
+
 ## Phase 8 — Optional Features (future)
 
 - Fantasy points / captain optimization

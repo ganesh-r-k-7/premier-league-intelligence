@@ -4,13 +4,13 @@ A football analytics platform built on StatsBomb Open Data, implementing player 
 
 ## Current Status
 
-**Phase 8.5A Complete** — Historical data quality remediation for FPL and OpenFootball datasets.
+**Phase 8.5B Complete** — Player identity review workflow with Streamlit review tool, FPL ID reuse audit, and enhanced validation.
 
 - **Data**: Three sources covering 2010/11–2025/26
   - **StatsBomb**: 2015/16 (380 matches, 20 teams, 550 players, event data)
   - **OpenFootball**: 2010/11–2025/26 (16 seasons, 6,080 matches, match results only)
   - **FPL**: 2016/17–2025/26 (10 seasons, 253,900 player-match rows, 7,364 player-seasons, xG/xA from 2022/23)
-- **Test Suite**: 467 tests passing (388 core + 79 integration/identity/quality)
+- **Test Suite**: 474 tests passing (388 core + 86 integration/identity/quality)
 
 ## Quick Start
 
@@ -63,6 +63,7 @@ Open `http://localhost:8501` in your browser.
 | 8.3C | Player identity resolution | ✅ **Complete** |
 | 8.4 | Cross-season integration validation | ✅ **Complete** |
 | 8.5A | Historical data quality remediation | ✅ **Complete** |
+| 8.5B | Player identity review & mapping validation | ✅ **Complete** |
 | 8 | Optional features | ⏳ Future |
 
 ## Key Results Summary
@@ -191,6 +192,7 @@ All phase reports in `reports/`:
 - `phase8.3C_player_identity_curation.md` — Player identity curation report
 - `phase8.4_integration_validation.md` — Cross-season integration validation report
 - `phase8.5A_data_quality_remediation.md` — Historical data quality remediation report
+- `phase8.5B_player_identity_review.md` — Player identity review and mapping validation report
 
 ## Attribution
 

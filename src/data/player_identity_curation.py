@@ -80,11 +80,32 @@ class CandidateMatch:
     evidence_score: float
     candidate_type: str  # "cross_provider" | "same_provider_continuity" | "unresolved"
 
+    # Enhanced evidence columns (v2)
+    src_a_normalized_name: Optional[str] = None
+    src_b_normalized_name: Optional[str] = None
+    transfer_known: Optional[bool] = None
+    club_tenure_overlap: Optional[bool] = None
+    minutes_delta: Optional[int] = None
+    goals_delta: Optional[int] = None
+
+    # FPL ID reuse severity (from audit)
+    src_a_fpl_id_reuse_severity: Optional[str] = None
+    src_b_fpl_id_reuse_severity: Optional[str] = None
+    fpl_id_reuse_severity: Optional[str] = None
+
+    # Quality flags (from remediated data)
+    src_a_quality_flag: Optional[str] = None
+    src_b_quality_flag: Optional[str] = None
+
     # Human review fields
     status: str = "pending"  # pending, confirmed, rejected, ambiguous
     reviewer_notes: str = ""
     reviewed_by: str = ""
     reviewed_at: str = ""
+
+    # External reference fields (filled by reviewer)
+    external_reference_url: str = ""
+    external_notes: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -106,10 +127,23 @@ class CandidateMatch:
             "position_match": self.position_match,
             "evidence_score": self.evidence_score,
             "candidate_type": self.candidate_type,
+            "src_a_normalized_name": self.src_a_normalized_name,
+            "src_b_normalized_name": self.src_b_normalized_name,
+            "transfer_known": self.transfer_known,
+            "club_tenure_overlap": self.club_tenure_overlap,
+            "minutes_delta": self.minutes_delta,
+            "goals_delta": self.goals_delta,
+            "src_a_fpl_id_reuse_severity": self.src_a_fpl_id_reuse_severity,
+            "src_b_fpl_id_reuse_severity": self.src_b_fpl_id_reuse_severity,
+            "fpl_id_reuse_severity": self.fpl_id_reuse_severity,
+            "src_a_quality_flag": self.src_a_quality_flag,
+            "src_b_quality_flag": self.src_b_quality_flag,
             "status": self.status,
             "reviewer_notes": self.reviewer_notes,
             "reviewed_by": self.reviewed_by,
             "reviewed_at": self.reviewed_at,
+            "external_reference_url": self.external_reference_url,
+            "external_notes": self.external_notes,
         }
 
 
@@ -229,6 +263,12 @@ def _find_cross_provider_candidates(
                 position_match=pos_match,
                 evidence_score=round(evidence_score, 3),
                 candidate_type=candidate_type,
+                src_a_normalized_name=sb_name,
+                src_b_normalized_name=fpl_name,
+                transfer_known=None,
+                club_tenure_overlap=team_match,
+                minutes_delta=None,
+                goals_delta=None,
             ))
 
     return candidates
@@ -256,6 +296,9 @@ def _find_same_provider_continuity(
         u_team = get_canonical_name(u_row["team"] if isinstance(u_row["team"], str) else "", "fpl")
         u_season = int(u_row["season_id"])
         u_pos = u_row.get("position")
+        u_minutes = int(u_row.get("minutes", 0)) if pd.notna(u_row.get("minutes")) else 0
+        u_goals = int(u_row.get("goals", 0)) if pd.notna(u_row.get("goals")) else 0
+        u_quality_flag = u_row.get("quality_flag") if "quality_flag" in u_row else None
 
         # Find other FPL seasons with same canonical name + team
         matches = fpl[
@@ -285,6 +328,14 @@ def _find_same_provider_continuity(
                 position_match=False,
                 evidence_score=0.0,
                 candidate_type="unresolved",
+                src_a_normalized_name=u_name,
+                src_b_normalized_name=None,
+                transfer_known=None,
+                club_tenure_overlap=None,
+                minutes_delta=None,
+                goals_delta=None,
+                src_a_quality_flag=u_quality_flag,
+                src_b_quality_flag=None,
             ))
             continue
 
@@ -299,6 +350,9 @@ def _find_same_provider_continuity(
         ref_team = ref["team"] if isinstance(ref["team"], str) else None
         ref_season = int(ref["season_id"])
         ref_pos = ref.get("position")
+        ref_minutes = int(ref.get("minutes", 0)) if pd.notna(ref.get("minutes")) else 0
+        ref_goals = int(ref.get("goals", 0)) if pd.notna(ref.get("goals")) else 0
+        ref_quality_flag = ref.get("quality_flag") if "quality_flag" in ref else None
 
         team_match = (isinstance(u_team, str) and isinstance(ref_team, str)
                       and u_team == get_canonical_name(ref_team, "fpl"))
@@ -314,6 +368,9 @@ def _find_same_provider_continuity(
             evidence_score += 0.1
         if pos_match:
             evidence_score += 0.1
+
+        minutes_delta = u_minutes - ref_minutes
+        goals_delta = u_goals - ref_goals
 
         if evidence_score >= 0.8:
             confidence_cat = "high"
@@ -341,6 +398,14 @@ def _find_same_provider_continuity(
             position_match=pos_match,
             evidence_score=round(evidence_score, 3),
             candidate_type="same_provider_continuity",
+            src_a_normalized_name=u_name,
+            src_b_normalized_name=_normalize_name_for_matching(ref_name),
+            transfer_known=None,
+            club_tenure_overlap=team_match,
+            minutes_delta=minutes_delta,
+            goals_delta=goals_delta,
+            src_a_quality_flag=u_quality_flag,
+            src_b_quality_flag=ref_quality_flag,
         ))
 
     return candidates
@@ -351,14 +416,16 @@ def generate_review_file(
     fpl_path: Optional[Path] = None,
     unmatched_path: Optional[Path] = None,
     output_path: Optional[Path] = None,
+    version: int = 1,
 ) -> Path:
     """Generate a review file for human curation of player identity matches.
 
     Args:
         statsbomb_path: Path to StatsBomb player-season parquet
-        fpl_path: Path to FPL player-season parquet
+        fpl_path: Path to FPL player-season parquet (uses remediated if version=2)
         unmatched_path: Path to unmatched players CSV (from Phase 8.2)
         output_path: Output path for review CSV
+        version: 1 for original, 2 for enhanced v2 with remediated data and extra columns
 
     Returns:
         Path to the generated review file
@@ -366,11 +433,17 @@ def generate_review_file(
     if statsbomb_path is None:
         statsbomb_path = data_config.STATSBOMB_PROCESSED_DIR / "player_season.parquet"
     if fpl_path is None:
-        fpl_path = data_config.DATA_PROCESSED_DIR / "fpl_player_season.parquet"
+        if version == 2:
+            fpl_path = data_config.DATA_PROCESSED_DIR / "fpl_player_season_remediated.parquet"
+        else:
+            fpl_path = data_config.DATA_PROCESSED_DIR / "fpl_player_season.parquet"
     if unmatched_path is None:
         unmatched_path = data_config.REPORTS_DIR / "player_mapping_unmatched.csv"
     if output_path is None:
-        output_path = data_config.DATA_PROCESSED_DIR / "review" / "player_identity_review.csv"
+        if version == 2:
+            output_path = data_config.DATA_PROCESSED_DIR / "review" / "player_identity_review_v2.csv"
+        else:
+            output_path = data_config.DATA_PROCESSED_DIR / "review" / "player_identity_review.csv"
 
     # Load data
     sb = pd.read_parquet(statsbomb_path)
@@ -397,14 +470,58 @@ def generate_review_file(
     review_rows = [c.to_dict() for c in all_candidates]
     review_df = pd.DataFrame(review_rows)
 
+    # Add FPL ID reuse severity if version 2
+    if version == 2:
+        audit_path = data_config.DATA_PROCESSED_DIR / "review" / "fpl_element_id_reuse_audit.csv"
+        if audit_path.exists():
+            review_df = _add_fpl_id_reuse_severity_to_review_df(review_df, audit_path)
+
     # Ensure output directory exists
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     review_df.to_csv(output_path, index=False)
-    print(f"Generated review file: {output_path} ({len(review_df)} candidates)")
-    print(f"  cross_provider: {len(cross_candidates)}")
-    print(f"  same_provider_continuity: {len(same_provider_candidates)}")
+    print(f"Generated review file v{version}: {output_path} ({len(review_df)} candidates)")
+    print(f"  cross_provider: {len([c for c in all_candidates if c.candidate_type == 'cross_provider'])}")
+    print(f"  same_provider_continuity: {len([c for c in all_candidates if c.candidate_type == 'same_provider_continuity'])}")
+    print(f"  unresolved: {len([c for c in all_candidates if c.candidate_type == 'unresolved'])}")
     return output_path
+
+
+def _add_fpl_id_reuse_severity_to_review_df(
+    review_df: pd.DataFrame,
+    audit_path: Path,
+) -> pd.DataFrame:
+    """Add fpl_id_reuse_severity columns to the review DataFrame from audit results."""
+    audit_df = pd.read_csv(audit_path)
+
+    # Create severity lookup
+    severity_lookup = dict(zip(audit_df["element_id"], audit_df["severity"]))
+
+    def get_severity(row, src_col: str) -> Optional[str]:
+        """Get severity for a source record."""
+        if row[f"{src_col}_source"] != "fpl":
+            return None
+        element_id = row[f"{src_col}_id"]
+        try:
+            return severity_lookup.get(int(element_id))
+        except (ValueError, TypeError):
+            return None
+
+    # Add severity for both sources
+    review_df["src_a_fpl_id_reuse_severity"] = review_df.apply(lambda r: get_severity(r, "src_a"), axis=1)
+    review_df["src_b_fpl_id_reuse_severity"] = review_df.apply(lambda r: get_severity(r, "src_b"), axis=1)
+
+    # Combined severity: max of both sources
+    severity_order = {"None": 0, "Low": 1, "Medium": 2, "High": 3, "Critical": 4}
+    def max_severity(row):
+        sevs = [row["src_a_fpl_id_reuse_severity"], row["src_b_fpl_id_reuse_severity"]]
+        valid = [s for s in sevs if s is not None]
+        if not valid:
+            return None
+        return max(valid, key=lambda s: severity_order.get(s, 0))
+
+    review_df["fpl_id_reuse_severity"] = review_df.apply(max_severity, axis=1)
+    return review_df
 
 
 # ---- Validation ----
@@ -425,9 +542,12 @@ def validate_mappings(mappings_path: Path) -> dict:
         "duplicate_mappings": [],
         "invalid_status": 0,
         "invalid_candidate_type": 0,
+        "invalid_external_urls": 0,
+        "fpl_id_reuse_warnings": 0,
+        "transitive_conflicts": 0,
     }
 
-    # Check required columns
+    # Check required columns (updated for v2)
     required_cols = [
         "src_a_name", "src_a_id", "src_a_source", "src_a_team", "src_a_season",
         "src_b_name", "src_b_id", "src_b_source", "src_b_team", "src_b_season",
@@ -461,16 +581,101 @@ def validate_mappings(mappings_path: Path) -> dict:
         invalid = mappings[~mappings["candidate_type"].isin(valid_types)]
         results["invalid_candidate_type"] = len(invalid)
 
-    # For confirmed mappings, check one-to-one
+    # Validate external_reference_url format if present
+    if "external_reference_url" in mappings.columns:
+        import re
+        url_pattern = re.compile(r'^https?://')
+        invalid_urls = mappings[
+            mappings["external_reference_url"].notna() &
+            (mappings["external_reference_url"] != "") &
+            ~mappings["external_reference_url"].apply(lambda x: bool(url_pattern.match(str(x))))
+        ]
+        results["invalid_external_urls"] = len(invalid_urls)
+
+    # FPL ID reuse warnings: if both sources have High/Critical severity
+    if "src_a_fpl_id_reuse_severity" in mappings.columns and "src_b_fpl_id_reuse_severity" in mappings.columns:
+        high_severity = {"High", "Critical"}
+        warnings = mappings[
+            mappings["src_a_fpl_id_reuse_severity"].isin(high_severity) &
+            mappings["src_b_fpl_id_reuse_severity"].isin(high_severity)
+        ]
+        results["fpl_id_reuse_warnings"] = len(warnings)
+
+    # For confirmed mappings, check one-to-one (season-scoped)
     confirmed = mappings[mappings["status"] == "confirmed"]
     if len(confirmed) > 0:
-        # src_a should map to at most one src_b and vice versa
-        a_counts = confirmed.groupby(["src_a_source", "src_a_id"]).size()
-        b_counts = confirmed.groupby(["src_b_source", "src_b_id"]).size()
+        # src_a should map to at most one src_b (season-scoped)
+        a_key = ["src_a_source", "src_a_id", "src_a_season"]
+        b_key = ["src_b_source", "src_b_id", "src_b_season"]
+        a_counts = confirmed.groupby(a_key).size()
+        b_counts = confirmed.groupby(b_key).size()
         results["one_to_one_violations"] = {
             "src_a_multiple": int((a_counts > 1).sum()),
             "src_b_multiple": int((b_counts > 1).sum()),
         }
+
+        # Check transitive conflicts: A↔B confirmed, B↔C confirmed, but A↔C rejected/pending
+        # Build mapping graph
+        edges = {}
+        for _, row in confirmed.iterrows():
+            a = f"{row['src_a_source']}|{row['src_a_id']}|{row['src_a_season']}"
+            b = f"{row['src_b_source']}|{row['src_b_id']}|{row['src_b_season']}"
+            edges.setdefault(a, set()).add(b)
+            edges.setdefault(b, set()).add(a)
+
+        # Check for transitive conflicts: A↔B confirmed, B↔C confirmed, but A↔C rejected/pending
+        transitive_conflicts = 0
+        for a, connected in edges.items():
+            a_parts = a.split("|")
+            if len(a_parts) != 3:
+                continue
+            a_source, a_id, a_season = a_parts
+            if not a_season or not a_season.isdigit():
+                continue
+            for b in connected:
+                b_parts = b.split("|")
+                if len(b_parts) != 3:
+                    continue
+                b_source, b_id, b_season = b_parts
+                if not b_season or not b_season.isdigit():
+                    continue
+                for c in edges.get(b, set()):
+                    c_parts = c.split("|")
+                    if len(c_parts) != 3:
+                        continue
+                    c_source, c_id, c_season = c_parts
+                    if not c_season or not c_season.isdigit():
+                        continue
+                    if c == a or c in edges.get(a, set()):
+                        continue
+                    # Check if A-C exists in mappings with non-confirmed status
+                    ac_exists = len(mappings[
+                        ((mappings["src_a_source"] == a_source) &
+                         (mappings["src_a_id"] == a_id) &
+                         (mappings["src_a_season"] == int(a_season)) &
+                         (mappings["src_b_source"] == c_source) &
+                         (mappings["src_b_id"] == c_id) &
+                         (mappings["src_b_season"] == int(c_season)))
+                    ]) > 0 or len(mappings[
+                        ((mappings["src_b_source"] == a_source) &
+                         (mappings["src_b_id"] == a_id) &
+                         (mappings["src_b_season"] == int(a_season)) &
+                         (mappings["src_a_source"] == c_source) &
+                         (mappings["src_a_id"] == c_id) &
+                         (mappings["src_a_season"] == int(c_season)))
+                    ]) > 0
+                    if ac_exists:
+                        ac_row = mappings[
+                            ((mappings["src_a_source"] == a_source) &
+                             (mappings["src_a_id"] == a_id) &
+                             (mappings["src_a_season"] == int(a_season)) &
+                             (mappings["src_b_source"] == c_source) &
+                             (mappings["src_b_id"] == c_id) &
+                             (mappings["src_b_season"] == int(c_season)))
+                        ]
+                        if not ac_row.empty and ac_row.iloc[0]["status"] != "confirmed":
+                            transitive_conflicts += 1
+        results["transitive_conflicts"] = transitive_conflicts
 
     return results
 
@@ -550,7 +755,10 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) > 1 and sys.argv[1] == "generate":
-        out = generate_review_file()
+        version = 1
+        if len(sys.argv) > 2 and sys.argv[2] == "--version":
+            version = int(sys.argv[3])
+        out = generate_review_file(version=version)
         print(f"Review file generated: {out}")
     elif len(sys.argv) > 1 and sys.argv[1] == "validate":
         if len(sys.argv) < 3:
