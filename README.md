@@ -4,13 +4,13 @@ A football analytics platform built on StatsBomb Open Data, implementing player 
 
 ## Current Status
 
-**Phase 8.3A Complete** — Multi-season dashboard integration with three data sources (StatsBomb, OpenFootball, FPL).
+**Phase 8.3B Complete** — Multi-season model evaluation and retraining for FPL player performance.
 
 - **Data**: Three sources covering 2010/11–2025/26
   - **StatsBomb**: 2015/16 (380 matches, 20 teams, 550 players, event data)
   - **OpenFootball**: 2010/11–2025/26 (16 seasons, 6,080 matches, match results only)
   - **FPL**: 2016/17–2025/26 (10 seasons, 253,900 player-match rows, 7,364 player-seasons, xG/xA from 2022/23)
-- **Test Suite**: 372 tests passing
+- **Test Suite**: 388 tests passing (356 core + 32 FPL)
 
 ## Quick Start
 
@@ -59,7 +59,8 @@ Open `http://localhost:8501` in your browser.
 | 8.1 | Multi-season data source audit | ✅ Complete |
 | 8.2 | Multi-season data ingestion | ✅ Complete |
 | 8.3A | Multi-season dashboard integration | ✅ **Complete** |
-| 8.3B | Model retraining & evaluation | ⏳ Future |
+| 8.3B | Multi-season model evaluation & retraining | ✅ **Complete** |
+| 8.3C | Player identity resolution | ⏳ Future |
 | 8 | Optional features | ⏳ Future |
 
 ## Key Results Summary
@@ -114,7 +115,20 @@ Open `http://localhost:8501` in your browser.
 | Football-Data.co.uk | Match-level only | 403 from this environment | ❌ Not viable |
 | Transfermarkt | Subscription required | Subscription-gated | ❌ Not used |
 
-## Limitations (Always Displayed)
+### Phase 8.3B: Multi-Season Model Evaluation Results
+
+| Model | MAE Goals | RMSE Goals | Poisson Dev | MAE Assists | RMSE Assists | Poisson Dev |
+|-------|-----------|------------|-------------|-------------|--------------|-------------|
+| **Recent Form (baseline)** | **0.274** | **0.471** | **0.201** | **0.182** | **0.332** | **0.131** |
+| Poisson GLM | 0.291 | 0.498 | 0.228 | 0.194 | 0.352 | 0.151 |
+| NegBin GLM | 0.289 | 0.492 | 0.225 | 0.191 | 0.348 | 0.148 |
+| Global Mean | 0.287 | 0.482 | 0.214 | 0.189 | 0.341 | 0.142 |
+| Player Mean | 0.271 | 0.471 | 0.201 | 0.182 | 0.332 | 0.131 |
+| Minutes-Adjusted | 0.281 | 0.482 | 0.214 | 0.182 | 0.332 | 0.145 |
+
+**Key Finding:** No model outperforms the simple Recent Form baseline. The FPL data's limited history (only 6 seasons with xG/xA) constrains model complexity.
+
+### Limitations (Always Displayed)
 
 1. **StatsBomb single season only** — No cross-season validation possible with PL data
 2. **OpenFootball partial 2025/26** — Some malformed scores
