@@ -1118,10 +1118,71 @@ reports/phase8.4_integration_validation.md
 ### Remaining Manual Work
 
 1. Human review of 1,363 player identity candidates (required for cross-provider analysis)
-2. FPL player_season duplicate resolution (6 players, low priority)
-3. FPL player_match rescheduled match handling (69 duplicates, low priority)
-4. 2025/26 OpenFootball score cleanup (medium priority)
+2. FPL player_id 748 reuse flagged (unresolvable without external data)
+3. FPL player_match: 9,124 (player_id, season_id, gameweek) duplicates documented
+4. 2025/26 OpenFootball unplayed matches flagged (will resolve as season progresses)
 5. 2026/27 data availability assessment (future)
+
+## Phase 8.5A — Historical Data Quality Remediation — complete
+
+### Summary
+
+Phase 8.5A investigates and remediates three known data-quality issues from Phase 8.4 validation.
+
+### 1. FPL Player-Season Duplicates (6 groups)
+
+| Player ID | Season | Issue | Resolution |
+|-----------|--------|-------|------------|
+| 120 | 2023 | Yarmoliuk / Yarmolyuk (transliteration) | Dropped lower-minutes row |
+| 515 | 2018 | Söyüncü / Söyüncü (accent encoding) | Dropped lower-minutes row |
+| 620 | 2023 | Michael / Michale Olakigbe (typo) | Kept correct spelling + more minutes |
+| 687 | 2023 | Djordje / Đorđe Petrović (transliteration) | Dropped lower-minutes row |
+| 802 | 2023 | Kinsey / Kinsey-Wellings (hyphenation) | Kept more appearances |
+| 748 | 2024 | Ivan Jurić vs Simon Rusk (FPL ID reuse) | **Flagged only** — unresolvable |
+
+**Output:** `fpl_player_season_remediated.parquet` (7,359 rows, –5), `quality_flag` column added.
+
+### 2. FPL Player-Match Rescheduled Fixture (69 groups)
+
+- **Fixture 275, 2019/20:** Arsenal vs Man City postponed from GW29 (2020-03-11) to GW39 (2020-06-17) due to COVID-19
+- Both gameweek entries kept; flagged with `rescheduled_match=True`, `match_status` = postponed/played
+- **Additional finding:** 9,124 duplicate `(player_id, season_id, gameweek)` groups with different `fixture_id` — documented as known FPL source issue
+
+**Output:** `fpl_player_match_remediated.parquet` (253,900 rows), `rescheduled_match` and `match_status` columns added.
+
+### 3. OpenFootball 2025/26 Missing Scores (27 matches)
+
+- Raw data uses `score: [0, 0]` for unplayed future matches; ingestion converted to NaN
+- Added `match_status` column: `unplayed` (27), `played` (6,053), `scheduled` (other)
+- No scores imputed
+
+**Output:** `matches_remediated.parquet` (6,080 rows), `match_status` column added.
+
+### Validation & Tests
+
+- Updated `src/data/data_contracts.py` with new optional columns and documented duplicate allowances
+- All 79 validation checks pass (100%)
+- 24 new tests in `tests/test_data_contracts.py` (all pass)
+- Full test suite: 85 core tests pass, no regressions
+- Original parquet files preserved; remediated files written to `_remediated.parquet` paths
+
+### Files Added
+
+```
+src/data/quality_remediation.py
+tests/test_data_contracts.py
+data/processed/fpl_player_season_remediated.parquet
+data/processed/fpl_player_match_remediated.parquet
+data/processed/matches_remediated.parquet
+reports/phase8.5A_data_quality_remediation.md
+```
+
+### Remaining Known Issues
+
+1. FPL player_id 748 reused for two people (2024/25) — flagged, unresolvable
+2. FPL player_match: 9,124 (player_id, season_id, gameweek) duplicates with different fixture_id — documented
+3. 2025/26 OpenFootball unplayed matches — correctly flagged
+4. FPL element ID reuse across seasons — known limitation
 
 ## Phase 8 — Optional Features (future)
 

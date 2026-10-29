@@ -66,6 +66,7 @@ EXPECTED_SCHEMAS = {
             "home_score_ft", "away_score_ft", "home_score_ht", "away_score_ht",
             "source", "source_url", "source_license", "raw_file", "raw_sha256", "ingested_at"
         ],
+        "optional_columns": ["match_status"],
         "key_columns": ["match_id"],
         "season_column": "season_name",
         "source_column": "source",
@@ -105,12 +106,13 @@ EXPECTED_SCHEMAS = {
         "season_column": "season_id",
         "numeric_columns": ["player_id", "season_id"],
     },
-    "fpl_player_season": {
+"fpl_player_season": {
         "required_columns": [
             "season_id", "season_name", "player_id", "player_name",
             "minutes", "goals", "assists", "appearances", "starts",
             "position", "team", "source", "source_url", "source_license", "ingested_at"
         ],
+        "optional_columns": ["quality_flag"],
         "key_columns": ["player_id", "season_id"],
         "season_column": "season_name",
         "source_column": "source",
@@ -121,16 +123,17 @@ EXPECTED_SCHEMAS = {
                            "influence", "creativity", "threat", "ict_index", "total_points",
                            "expected_goals", "expected_assists", "expected_goal_involvements",
                            "expected_goals_conceded"],
-        "allow_duplicate_keys": True,  # Known source issue: accent/name variations cause same player_id twice in season
+        "allow_duplicate_keys": True,  # One known case: player_id=748 season_id=2024 (FPL ID reuse for two different people)
     },
-    "fpl_player_match": {
+"fpl_player_match": {
         "required_columns": [
             "player_id", "player_name", "season_id", "season_name",
             "gameweek", "fixture_id", "minutes", "goals", "assists", "was_home",
             "team", "position", "source", "source_url", "source_license",
             "raw_sha256", "ingested_at"
         ],
-        "key_columns": ["player_id", "season_id", "fixture_id"],
+        "optional_columns": ["rescheduled_match", "match_status"],
+        "key_columns": ["player_id", "season_id", "gameweek"],
         "season_column": "season_name",
         "source_column": "source",
         "numeric_columns": ["player_id", "season_id", "gameweek", "fixture_id", "minutes", "goals",
@@ -139,7 +142,7 @@ EXPECTED_SCHEMAS = {
                            "saves", "bonus", "bps", "influence", "creativity", "threat",
                            "ict_index", "total_points", "expected_goals", "expected_assists",
                            "expected_goal_involvements", "expected_goals_conceded", "starts"],
-        "allow_duplicate_keys": True,  # Known source issue: rescheduled matches cause same fixture_id in multiple gameweeks
+        "allow_duplicate_keys": True,  # Known source issue: 9,124 duplicate (player_id, season_id, gameweek) groups from FPL source data having multiple fixture_ids per gameweek
     },
     "sb_player_season": {
         "required_columns": [
@@ -296,6 +299,20 @@ def _check_source_separation(df: pd.DataFrame, source_col: str) -> ValidationRes
     )
 
 
+def _check_optional_columns(df: pd.DataFrame, optional: list[str]) -> ValidationResult:
+    """Check that optional columns, if present, have valid data."""
+    if not optional:
+        return ValidationResult("", "optional_columns", True, "No optional columns defined")
+    present = [c for c in optional if c in df.columns]
+    missing = [c for c in optional if c not in df.columns]
+    return ValidationResult(
+        dataset="", check="optional_columns",
+        passed=True,
+        message=f"Optional columns present: {present}, absent: {missing}",
+        details={"present": present, "absent": missing}
+    )
+
+
 def validate_dataset(dataset_name: str, df: pd.DataFrame, path: Path) -> DatasetReport:
     """Validate a single dataset against its expected schema."""
     schema = EXPECTED_SCHEMAS.get(dataset_name, {})
@@ -304,6 +321,11 @@ def validate_dataset(dataset_name: str, df: pd.DataFrame, path: Path) -> Dataset
     # Required columns
     required = schema.get("required_columns", [])
     check = _check_required_columns(df, required)
+    checks.append(ValidationResult(dataset_name, check.check, check.passed, check.message, check.details))
+
+    # Optional columns
+    optional = schema.get("optional_columns", [])
+    check = _check_optional_columns(df, optional)
     checks.append(ValidationResult(dataset_name, check.check, check.passed, check.message, check.details))
 
     # Key uniqueness
@@ -356,24 +378,41 @@ def validate_dataset(dataset_name: str, df: pd.DataFrame, path: Path) -> Dataset
     )
 
 
-def load_and_validate(dataset_name: str) -> DatasetReport:
-    """Load a dataset by name and validate it."""
+def load_and_validate(dataset_name: str, use_remediated: bool = True) -> DatasetReport:
+    """Load a dataset by name and validate it.
+
+    Args:
+        dataset_name: Name of the dataset to validate.
+        use_remediated: If True, prefer remediated files (e.g., *_remediated.parquet)
+                       over original files.
+    """
     paths = {
-        "matches": DATA_PROCESSED_DIR / "matches.parquet",
+        "matches": DATA_PROCESSED_DIR / "matches_remediated.parquet",
         "teams": DATA_PROCESSED_DIR / "teams.parquet",
         "seasons": DATA_PROCESSED_DIR / "seasons.parquet",
         "team_registry": DATA_PROCESSED_DIR / "team_registry.parquet",
         "player_registry": DATA_PROCESSED_DIR / "player_registry.parquet",
-        "fpl_player_season": DATA_PROCESSED_DIR / "fpl_player_season.parquet",
-        "fpl_player_match": DATA_PROCESSED_DIR / "fpl_player_match.parquet",
+        "fpl_player_season": DATA_PROCESSED_DIR / "fpl_player_season_remediated.parquet",
+        "fpl_player_match": DATA_PROCESSED_DIR / "fpl_player_match_remediated.parquet",
         "sb_player_season": STATSBOMB_PROCESSED_DIR / "player_season.parquet",
         "sb_player_match": STATSBOMB_PROCESSED_DIR / "player_match.parquet",
         "sb_fixtures": STATSBOMB_PROCESSED_DIR / "fixtures.parquet",
         "canonical_identity": DATA_PROCESSED_DIR / "canonical_identity_mapping.parquet",
     }
+    # Fallback to original files if remediated doesn't exist
+    fallback_paths = {
+        "matches": DATA_PROCESSED_DIR / "matches.parquet",
+        "fpl_player_season": DATA_PROCESSED_DIR / "fpl_player_season.parquet",
+        "fpl_player_match": DATA_PROCESSED_DIR / "fpl_player_match.parquet",
+    }
+
     path = paths.get(dataset_name)
     if not path or not path.exists():
-        raise FileNotFoundError(f"Dataset {dataset_name} not found at {path}")
+        # Try fallback
+        path = fallback_paths.get(dataset_name)
+        if not path or not path.exists():
+            raise FileNotFoundError(f"Dataset {dataset_name} not found at {path}")
+
     df = pd.read_parquet(path)
     return validate_dataset(dataset_name, df, path)
 
