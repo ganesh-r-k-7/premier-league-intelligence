@@ -4,13 +4,13 @@ A football analytics platform built on StatsBomb Open Data, implementing player 
 
 ## Current Status
 
-**Phase 8.3C Complete** — Player identity curation workflow for 1,067 unmatched FPL player-season rows and cross-provider matching.
+**Phase 8.4 Complete** — Cross-season integration validation for multi-season football data architecture.
 
 - **Data**: Three sources covering 2010/11–2025/26
   - **StatsBomb**: 2015/16 (380 matches, 20 teams, 550 players, event data)
   - **OpenFootball**: 2010/11–2025/26 (16 seasons, 6,080 matches, match results only)
   - **FPL**: 2016/17–2025/26 (10 seasons, 253,900 player-match rows, 7,364 player-seasons, xG/xA from 2022/23)
-- **Test Suite**: 419 tests passing (388 core + 31 identity curation)
+- **Test Suite**: 443 tests passing (388 core + 55 integration/identity)
 
 ## Quick Start
 
@@ -61,6 +61,7 @@ Open `http://localhost:8501` in your browser.
 | 8.3A | Multi-season dashboard integration | ✅ **Complete** |
 | 8.3B | Multi-season model evaluation & retraining | ✅ **Complete** |
 | 8.3C | Player identity resolution | ✅ **Complete** |
+| 8.4 | Cross-season integration validation | ✅ **Complete** |
 | 8 | Optional features | ⏳ Future |
 
 ## Key Results Summary
@@ -187,6 +188,7 @@ All phase reports in `reports/`:
 - `phase8.3A_dashboard_report.md` — Multi-season dashboard integration report
 - `phase8.3B_multiseason_model_evaluation.md` — Multi-season model evaluation report
 - `phase8.3C_player_identity_curation.md` — Player identity curation report
+- `phase8.4_integration_validation.md` — Cross-season integration validation report
 
 ## Attribution
 
