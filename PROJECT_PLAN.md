@@ -1310,9 +1310,93 @@ reports/phase8.5C_identity_review_validation.md
 3. Apply confirmed mappings → `canonical_identity_mapping.parquet`
 4. FPL element ID 748 resolution (requires external data)
 
-## Phase 8 — Optional Features (future)
+## Phase 9.1 — Multi-Season Player Intelligence — complete
 
-- Fantasy points / captain optimization
+### Summary
+
+Phase 9.1 implements a comprehensive multi-season player intelligence system using historical Premier League data from FPL (2016/17–2025/26) and StatsBomb (2015/16). The system provides reusable metrics for player performance analysis across multiple seasons, with identity safeguards and position-specific benchmarking.
+
+### 1. Analytical Capabilities Implemented
+
+| Category | Functions | Key Metrics |
+|----------|-----------|-------------|
+| **Performance Production** | `compute_performance_metrics()` | Per-90 rates (goals, assists, xG, xA, shots, shots on target), efficiency (goals/shot, goals/xG), playing time (starts rate, minutes/appearance), points efficiency (points/90, points/appearance), xG/xA availability flags |
+| **Position Benchmarks** | `compute_position_benchmarks()`, `merge_with_benchmarks()` | Median, mean, std, q25/q75, p10/p90 for 17 metrics × 4 bands × 6 seasons (2020–2025) |
+| **Consistency Analysis** | `compute_season_consistency()`, `compute_match_consistency()` | Season CV, trend (slope, R²), range; match rolling mean/std/CV (5-match window), streaks |
+| **Development Trends** | `compute_season_over_season_changes()`, `compute_development_trends()` | Season-over-season % changes; linear regression slope, R², trend classification (improving/declining/stable/unclear) |
+| **Breakout Detection** | `compute_breakout_score()`, `find_breakout_players()` | Production (30%), minutes (20%), per-90 (30%), consistency (20%); percentile ranks |
+| **Decline Detection** | `compute_decline_score()`, `find_declining_players()` | Production (40%), minutes (20%), per-90 (20%), consistency (20%); percentile ranks |
+| **Position Benchmarks** | 17 metrics × 4 bands × 6 seasons (2020–2025) | Median, mean, std, q25/q75, p10/p90, percentile ranks, z-scores |
+
+### 2. Identity Safeguards
+
+- **Season-scoped canonical IDs:** Hash includes season to protect against FPL ID reuse
+- **FPL ID reuse audit:** 866 element IDs scanned; 1 Critical (ID 748), 372 High, 468 Medium, 25 None
+- **Identity-aware analysis:** `get_same_identity_records()`, `get_career_trajectory()`, `get_development_summary()` only use confirmed mappings
+- **Pending review:** 1,363 candidates (296 cross-provider, 777 same-provider, 290 unresolved) — all pending human review
+- **FPL ID reuse audit:** 866 element IDs scanned; ID 748 Critical (5 players in 2024/25)
+
+### 3. Dashboard Integration
+
+**New Page: "Player Intelligence"**
+- Filters: Season, position band, metric, min minutes, candidate type, FPL ID reuse severity
+- Tabs: Top Performers, Consistency Leaders, Breakout Candidates, Declining Players, Development Profiles, Position Benchmarks
+- Features: Filtering, sorting, pagination, Transfermarkt/Wikipedia search links, bulk actions, auto-save
+- Helper functions: `get_top_performers_by_metric()`, `get_consistency_leaders()`, `find_breakout_players()`, `find_declining_players()`, `get_development_summary()`
+
+### 4. Identity Safeguards Enforced
+
+- **Season-scoped canonical IDs:** Hash includes season to protect against FPL ID reuse
+- **No auto-approval:** All 1,363 candidates remain `pending` — no fabricated human decisions
+- **Confirmed-only analysis:** Career trajectories only built from confirmed mappings
+- **FPL ID reuse flagged:** `fpl_id_reuse_severity` column in review file (192 High/Critical warnings)
+- **Source boundaries preserved:** No metric conflation; FPL metrics kept separate from StatsBomb
+
+### 4. Tests
+
+- **22 new tests** in `tests/test_player_intelligence.py` (all pass)
+- Coverage: utility functions, data loading, performance metrics, benchmarks, consistency, trends, breakout/decline, dashboard helpers, identity safeguards, determinism
+- **115 total tests pass** (31 identity + 24 data contracts + 38 dashboard + 22 intelligence = 115)
+- **Full core suite:** 123 tests pass (no regressions)
+- **Data contracts:** 79/79 checks pass (100%)
+
+### Files Added
+
+```
+src/features/player_intelligence.py          # Main module (~1,500 lines)
+tests/test_player_intelligence.py            # 22 tests
+reports/phase9.1_player_intelligence_report.md
+```
+
+### Modified Files
+
+```
+src/features/player_intelligence.py          # Added position band auto-detection
+src/dashboard/app.py                         # Added Player Intelligence page
+tests/test_player_intelligence.py            # 22 new tests
+PROJECT_PLAN.md                              # Phase 9.1 completion
+README.md                                    # Status update
+```
+
+### Known Limitations
+
+1. **No confirmed identities:** 1,363 review candidates still pending; career trajectories only work for confirmed IDs
+2. **Early seasons lack position:** 2016–2019 FPL seasons have no position data (2,620 UNKNOWN)
+3. **FPL ID reuse pervasive:** 866 element IDs scanned; only 25 stable across all seasons
+4. **No StatsBomb multi-season:** Only 2015/16 available; no longitudinal StatsBomb analysis
+5. **Breakout/Decline weights:** Heuristic, not validated against ground truth
+6. **No market values:** Cannot assess financial efficiency or transfer value
+
+### Remaining Manual Work
+
+1. Human review of 1,363 identity candidates (296 cross-provider, 777 same-provider, 290 unresolved)
+2. External lookup for 296 cross-provider candidates (Transfermarkt/Wikipedia)
+3. Apply confirmed mappings → `canonical_identity_mapping.parquet`
+4. FPL element ID 748 resolution (requires external data)
+
+## Phase 9 — Optional Features (future)
+
+- Market value integration / transfer prediction
 - Golden Boot prediction
 - Scenario analysis
 - AI analyst narrative generation

@@ -4,13 +4,13 @@ A football analytics platform built on StatsBomb Open Data, implementing player 
 
 ## Current Status
 
-**Phase 8.5C Complete** — Identity review validation and mapping integration for 1,363 player identity candidates.
+**Phase 9.1 Complete** — Multi-season player intelligence analytics with identity safeguards and position-specific benchmarking.
 
 - **Data**: Three sources covering 2010/11–2025/26
   - **StatsBomb**: 2015/16 (380 matches, 20 teams, 550 players, event data)
   - **OpenFootball**: 2010/11–2025/26 (16 seasons, 6,080 matches, match results only)
   - **FPL**: 2016/17–2025/26 (10 seasons, 253,900 player-match rows, 7,364 player-seasons, xG/xA from 2022/23)
-- **Test Suite**: 505 tests passing (388 core + 117 integration/identity/quality)
+- **Test Suite**: 527 tests passing (388 core + 139 integration/identity/quality)
 
 ## Quick Start
 
@@ -65,6 +65,7 @@ Open `http://localhost:8501` in your browser.
 | 8.5A | Historical data quality remediation | ✅ **Complete** |
 | 8.5B | Player identity review & mapping validation | ✅ **Complete** |
 | 8.5C | Identity review validation & mapping integration | ✅ **Complete** |
+| 9.1 | Multi-season player intelligence | ✅ **Complete** |
 | 8 | Optional features | ⏳ Future |
 
 ## Key Results Summary
@@ -195,6 +196,7 @@ All phase reports in `reports/`:
 - `phase8.5A_data_quality_remediation.md` — Historical data quality remediation report
 - `phase8.5B_player_identity_review.md` — Player identity review and mapping validation report
 - `phase8.5C_identity_review_validation.md` — Identity review validation and mapping integration report
+- `phase9.1_player_intelligence_report.md` — Multi-season player intelligence analytics report
 
 ## Attribution
 
