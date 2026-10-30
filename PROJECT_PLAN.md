@@ -1257,6 +1257,59 @@ reports/phase8.5B_player_identity_review.md
 3. Apply confirmed mappings → `canonical_identity_mapping.parquet`
 4. FPL element ID 748 resolution (requires external data)
 
+## Phase 8.5C — Execute Identity Review and Validate Integration — complete
+
+### Summary
+
+Phase 8.5C verifies the review tool, executes the human-review workflow (simulated), applies confirmed mappings, and validates downstream integration.
+
+### 1. Review Tool Verification
+
+- **Local-only Streamlit tool** verified: filtering, detail view, Transfermarkt/Wikipedia links, bulk actions (explicit selection), auto-save, progress tracking
+- **Persistence:** Decisions persist across sessions (auto-save to CSV, reload verified)
+- **Bulk actions:** Require explicit reviewer selection; no auto-confirmation by confidence scores
+
+### 2. Validation & Conflict Detection
+
+- **All 1,363 candidates remain `pending`** — no fabricated human decisions
+- **Validation suite passes** (0 invalid status, 0 invalid candidate_type, 0 invalid URLs)
+- **Conflict detection verified:** Same StatsBomb player mapped to multiple FPL players in same season → detected (`src_a_multiple: 1`)
+- **FPL ID reuse warnings:** 192 candidates with High/Critical severity on both sides
+- **Transitive conflict detection:** Implemented (0 found in test data)
+- **Invalid URL detection:** Non-HTTPS URLs flagged
+
+### 3. Mapping Application
+
+- **Season-scoped canonical IDs:** Hash includes season to protect against FPL ID reuse
+- **Only confirmed mappings applied** → `canonical_identity_mapping.parquet` (separate from `player_registry.parquet`)
+- **Test application:** 2 confirmed mappings applied correctly (1 cross-provider, 1 same-provider continuity)
+- **Source boundaries preserved:** No metric conflation; canonical IDs link source records only
+
+### 4. Downstream Integration Safety
+
+- **All 79 data contract checks pass** (100%)
+- **FPL ID reuse handled:** Season-scoped keys prevent collisions; ID 748 flagged with `quality_flag`
+- **Source boundaries preserved:** No unapproved cross-provider joins in downstream code
+- **No regressions** in StatsBomb 2015/16, FPL models, or dashboard
+
+### 5. Tests
+
+- **31 identity tests** + **24 data contract tests** + **38 dashboard tests** = **93 tests pass**
+- **Full core suite:** 123 tests pass (no regressions)
+
+### Files Added
+
+```
+reports/phase8.5C_identity_review_validation.md
+```
+
+### Remaining Manual Work
+
+1. Human review of 1,363 candidates (296 cross-provider, 777 same-provider, 290 unresolved)
+2. External lookup for 296 cross-provider candidates (Transfermarkt/Wikipedia)
+3. Apply confirmed mappings → `canonical_identity_mapping.parquet`
+4. FPL element ID 748 resolution (requires external data)
+
 ## Phase 8 — Optional Features (future)
 
 - Fantasy points / captain optimization
